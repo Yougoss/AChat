@@ -72,3 +72,45 @@ test("resolveDataDir defaults to ~/.achat and honors ACHAT_DATA_DIR", () => {
     "/tmp/achat-test",
   );
 });
+
+test("process runtime starts registered lifecycles in order and stops them in reverse", async () => {
+  assert.equal(typeof runtimeModule.registerAppRuntimeLifecycle, "function");
+  const calls = [];
+
+  runtimeModule.registerAppRuntimeLifecycle({
+    async start() {
+      calls.push("first:start");
+    },
+    async stop() {
+      calls.push("first:stop");
+    },
+  });
+  runtimeModule.registerAppRuntimeLifecycle({
+    async start() {
+      calls.push("second:start");
+    },
+    async stop() {
+      calls.push("second:stop");
+    },
+  });
+
+  assert.deepEqual(calls, []);
+  const runtime = await runtimeModule.getAppRuntime();
+  await runtime.start();
+  assert.deepEqual(calls, ["first:start", "second:start"]);
+
+  await runtime.start();
+  assert.deepEqual(calls, ["first:start", "second:start"]);
+  assert.throws(
+    () => runtimeModule.registerAppRuntimeLifecycle({}),
+    /startup/i,
+  );
+
+  await runtime.stop();
+  assert.deepEqual(calls, [
+    "first:start",
+    "second:start",
+    "second:stop",
+    "first:stop",
+  ]);
+});

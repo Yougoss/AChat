@@ -11,16 +11,22 @@ export interface AppRuntime {
   stop(): Promise<void>;
 }
 
+interface AppRuntimeController {
+  runtime: AppRuntime;
+  registerLifecycle(lifecycle: AppRuntimeLifecycle): void;
+}
+
 type RuntimeState = "idle" | "starting" | "started" | "stopping" | "stopped";
 
-export function createAppRuntime(
-  lifecycle: AppRuntimeLifecycle = {},
-): AppRuntime {
+function createAppRuntimeController(
+  lifecycles: AppRuntimeLifecycle[] = [],
+): AppRuntimeController {
   let state: RuntimeState = "idle";
   let startPromise: Promise<void> | undefined;
   let stopPromise: Promise<void> | undefined;
+  const registeredLifecycles = [...lifecycles];
 
-  return {
+  const runtime: AppRuntime = {
     start(): Promise<void> {
       if (state === "stopping" || state === "stopped") {
         return Promise.reject(new Error("AppRuntime is stopped"));
@@ -34,7 +40,11 @@ export function createAppRuntime(
 
       state = "starting";
       startPromise = Promise.resolve()
-        .then(() => lifecycle.start?.())
+        .then(async () => {
+          for (const lifecycle of registeredLifecycles) {
+            await lifecycle.start?.();
+          }
+        })
         .then(
           () => {
             if (state === "starting") {
@@ -62,7 +72,9 @@ export function createAppRuntime(
           await startPromise.catch(() => undefined);
         }
         try {
-          await lifecycle.stop?.();
+          for (let index = registeredLifecycles.length - 1; index >= 0; index -= 1) {
+            await registeredLifecycles[index].stop?.();
+          }
         } finally {
           state = "stopped";
         }
@@ -70,13 +82,39 @@ export function createAppRuntime(
       return stopPromise;
     },
   };
+
+  return {
+    runtime,
+    registerLifecycle(lifecycle: AppRuntimeLifecycle): void {
+      if (state !== "idle") {
+        throw new Error("Cannot register lifecycle after AppRuntime startup");
+      }
+      registeredLifecycles.push(lifecycle);
+    },
+  };
 }
 
-let processRuntime: AppRuntime | undefined;
+export function createAppRuntime(
+  lifecycle: AppRuntimeLifecycle = {},
+): AppRuntime {
+  return createAppRuntimeController([lifecycle]).runtime;
+}
+
+let processRuntimeController: AppRuntimeController | undefined;
+
+function getProcessRuntimeController(): AppRuntimeController {
+  processRuntimeController ??= createAppRuntimeController();
+  return processRuntimeController;
+}
 
 export function getAppRuntime(): Promise<AppRuntime> {
-  processRuntime ??= createAppRuntime();
-  return Promise.resolve(processRuntime);
+  return Promise.resolve(getProcessRuntimeController().runtime);
+}
+
+export function registerAppRuntimeLifecycle(
+  lifecycle: AppRuntimeLifecycle,
+): void {
+  getProcessRuntimeController().registerLifecycle(lifecycle);
 }
 
 export function resolveDataDir(
