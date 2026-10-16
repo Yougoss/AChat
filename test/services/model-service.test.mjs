@@ -75,7 +75,7 @@ test("reloads a contact's saved model when creating its next session", async () 
       agentDir: "/shared/pi-agent",
       createSession: async (options) => {
         created.push(options);
-        return { session: { marker: "session" } };
+        return { session: { marker: "session", subscribe() { return () => {}; } } };
       },
     });
 
@@ -118,7 +118,9 @@ test("task prompts contain only the selected task and its members", async () => 
       runtime: createRuntime([]),
       sessionRegistry: createSessionRegistry(),
       dataDir: "/achat-test-data",
-      createSession: async () => ({ session: { marker: "session" } }),
+      createSession: async () => ({
+        session: { marker: "session", subscribe() { return () => {}; } },
+      }),
     });
 
     const prompt = await factory.buildTaskSystemPrompt(firstContact.id, task.id);
@@ -151,7 +153,7 @@ test("task sessions use their project cwd and never receive contact-chat tools",
       agentDir: "/shared/pi-agent",
       createSession: async (options) => {
         created.push(options);
-        return { session: { marker: "session" } };
+        return { session: { marker: "session", subscribe() { return () => {}; } } };
       },
     });
 

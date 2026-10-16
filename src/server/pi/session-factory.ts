@@ -24,6 +24,9 @@ import { createProjectRepository } from "../db/repositories/project-repository.t
 import { createGroupTaskRepository } from "../db/repositories/group-task-repository.ts";
 import { createMessageRepository } from "../db/repositories/message-repository.ts";
 import { createSessionRepository } from "../db/repositories/session-repository.ts";
+import { createTraceExtension } from "./trace-extension.ts";
+import { createTraceQueryService } from "../services/trace-query-service.ts";
+import { createQueryContactSessionsTool } from "./tools/query-contact-sessions.ts";
 import { getPiModelRuntime } from "./model-runtime.ts";
 import { createSessionRegistry, type SessionRegistry } from "./session-registry.ts";
 
@@ -234,7 +237,7 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
       cwd,
       agentDir,
       model: model as Model<Api>,
-      modelRuntime: (dependencies.runtime as ModelRuntime),
+      modelRuntime: dependencies.runtime as ModelRuntime,
       sessionManager,
       settingsManager,
       resourceLoader,
@@ -242,11 +245,10 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
         ? { noTools: "all" as const }
         : { tools: ["read", "write", "edit", "bash", "grep", "find", "ls"] }),
     };
-    const result = await constructSession(sessionOptions);
-    if (!existingMapping) {
+    const mapping = existingMapping ?? (() => {
       const sessionFile = sessionManager.getSessionFile();
       if (!sessionFile) throw new Error("Pi did not provide a session file path");
-      sessionMappings.createSessionMapping({
+      return sessionMappings.createSessionMapping({
         id: randomUUID(),
         contactId,
         taskId,
@@ -255,7 +257,32 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
         piSessionId: sessionManager.getSessionId(),
         sessionFile,
       });
+    })();
+    const trace = createTraceExtension(dependencies.db);
+    const traceScope = {
+      id: mapping.id,
+      contactId: mapping.contactId,
+      taskId: mapping.taskId,
+      kind: mapping.kind,
+      piSessionId: mapping.piSessionId,
+    };
+    sessionOptions.modelRuntime = trace.instrumentModelRuntime(
+      dependencies.runtime as ModelRuntime,
+      traceScope,
+    );
+    if (options.sessionKind === "contact_chat") {
+      sessionOptions.customTools = [
+        createQueryContactSessionsTool(contactId, createTraceQueryService(dependencies.db)),
+      ];
     }
+    let result: CreateAgentSessionResult;
+    try {
+      result = await constructSession(sessionOptions);
+    } catch (error) {
+      if (!existingMapping) sessionMappings.deleteSessionMapping(mapping.id);
+      throw error;
+    }
+    trace.subscribeToSession(traceScope, result.session);
     sessionRegistry.set(sessionKey, result.session);
     return result.session;
   }
@@ -275,6 +302,21 @@ async function withDefaultDatabase<T>(
   }
 }
 
+let processSessionDatabase: Database.Database | undefined;
+
+function getProcessSessionDatabase(): Database.Database {
+  if (processSessionDatabase?.open) return processSessionDatabase;
+  const db = openDatabase(path.join(resolveDataDir(), "achat.sqlite"));
+  try {
+    migrate(db);
+    processSessionDatabase = db;
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+
 const processSessionRegistry = createSessionRegistry();
 
 export function buildTaskSystemPrompt(contactId: string, taskId: string): Promise<string> {
@@ -282,15 +324,16 @@ export function buildTaskSystemPrompt(contactId: string, taskId: string): Promis
     Promise.resolve(createTaskSystemPrompt(db, contactId, taskId)));
 }
 
-export function createContactSession(
+export async function createContactSession(
   contactId: string,
   options: CreateContactSessionOptions,
 ): Promise<AgentSession> {
-  return withDefaultDatabase(async (db) => createSessionFactory({
-    db,
-    runtime: await getPiModelRuntime(),
+  const runtime = await getPiModelRuntime();
+  return createSessionFactory({
+    db: getProcessSessionDatabase(),
+    runtime,
     dataDir: resolveDataDir(),
     agentDir: getAgentDir(),
     sessionRegistry: processSessionRegistry,
-  }).createContactSession(contactId, options));
+  }).createContactSession(contactId, options);
 }

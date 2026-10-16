@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
@@ -17,6 +17,10 @@ const migrationFiles = [
   {
     version: 3,
     path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/003_attention_run_work_item_scope.sql"),
+  },
+  {
+    version: 4,
+    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/004_trace_capture.sql"),
   },
 ];
 const latestMigrationVersion = migrationFiles.at(-1)!.version;
@@ -118,9 +122,14 @@ function assertVersionTwoAttentionRequestsCanUpgrade(db: Database.Database): voi
 
 export function openDatabase(databasePath: string): Database.Database {
   if (databasePath !== ":memory:" && !databasePath.startsWith("file:")) {
-    mkdirSync(path.dirname(path.resolve(databasePath)), { recursive: true });
+    const directory = path.dirname(path.resolve(databasePath));
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    if (directory !== process.cwd()) chmodSync(directory, 0o700);
   }
   const db = new Database(databasePath);
+  if (databasePath !== ":memory:" && !databasePath.startsWith("file:")) {
+    chmodSync(databasePath, 0o600);
+  }
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   return db;

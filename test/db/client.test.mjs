@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -19,7 +19,7 @@ test("database lifecycle defers opening until start and closes on stop", async (
   const db = lifecycle.getDatabase();
   assert.equal(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").get().version,
-    3,
+    4,
   );
 
   await lifecycle.stop();
@@ -37,8 +37,22 @@ test("openDatabase enables foreign keys and migrations are repeatable", (t) => {
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3],
+    [1, 2, 3, 4],
   );
+});
+
+test("stores trace-capable database files under owner-only directory and file permissions", (t) => {
+  const directory = path.join(process.cwd(), "test", `.trace-permissions-${process.pid}`);
+  const databasePath = path.join(directory, "achat.sqlite");
+  rmSync(directory, { recursive: true, force: true });
+  const db = openDatabase(databasePath);
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  assert.equal(statSync(directory).mode & 0o777, 0o700);
+  assert.equal(statSync(databasePath).mode & 0o777, 0o600);
 });
 
 test("upgrades version-one ownership and run data into current schema boundaries", async (t) => {
@@ -85,7 +99,7 @@ test("upgrades version-one ownership and run data into current schema boundaries
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3],
+    [1, 2, 3, 4],
   );
   assert.equal(
     db.prepare("SELECT contact_id AS contactId FROM conversations WHERE id = 'private-1'").get().contactId,
@@ -197,7 +211,7 @@ test("database migrations do not depend on the global URL constructor", async ()
     clientModule.migrate(db);
     assert.equal(
       db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version,
-      3,
+      4,
     );
   } finally {
     db.close();
