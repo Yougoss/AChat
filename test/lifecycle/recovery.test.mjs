@@ -216,6 +216,54 @@ test("associates graceful interruptions without changing their run or trace hist
     entry.type === "achat_event" && entry.payload.payload.eventId === event.id));
 });
 
+test("restores a retry interrupted between resetting the item and creating its new run", async (t) => {
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  markInterrupted(fixture);
+  createWorkItemRepository(fixture.db).updateWorkItemStatus(
+    fixture.sourceWorkItem.id,
+    "pending",
+    "2026-10-16T02:30:00.000Z",
+  );
+  let workItemExecutions = 0;
+  const recovery = createRecoveryService(fixture.db, {
+    runWorkItem: async () => {
+      workItemExecutions += 1;
+      throw new Error("startup must not retry work");
+    },
+  });
+
+  await recovery.reconcileInterruptedWork();
+
+  assert.equal(createWorkItemRepository(fixture.db).getWorkItem(fixture.sourceWorkItem.id).status,
+    "interrupted");
+  assert.equal(createRunRepository(fixture.db).listRunsForWorkItem(fixture.sourceWorkItem.id).length, 1);
+  assert.equal(workItemExecutions, 0);
+});
+
+test("marks a work item completed when its run completed before shutdown", async (t) => {
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  createRunRepository(fixture.db).completeRun(
+    fixture.sourceRun.id,
+    "2026-10-16T02:00:00.000Z",
+  );
+  let workItemExecutions = 0;
+  const recovery = createRecoveryService(fixture.db, {
+    runWorkItem: async () => {
+      workItemExecutions += 1;
+      throw new Error("startup must not replay completed work");
+    },
+  });
+
+  await recovery.reconcileInterruptedWork();
+
+  assert.equal(createWorkItemRepository(fixture.db).getWorkItem(fixture.sourceWorkItem.id).status,
+    "completed");
+  assert.equal(createRunRepository(fixture.db).getRun(fixture.sourceRun.id).status, "completed");
+  assert.equal(workItemExecutions, 0);
+});
+
 test("manual retry creates a new run on the existing session and retains original trace", async (t) => {
   const fixture = createExecutionFixture();
   t.after(() => fixture.db.close());

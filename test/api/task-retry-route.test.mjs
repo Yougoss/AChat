@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { POST as retryTask } from "../../src/app/api/tasks/[taskId]/retry/route.ts";
+import {
+  RetryConflictError,
+  retryErrorStatus,
+  TaskNotFoundError,
+} from "../../src/server/lifecycle/retry-errors.ts";
+
+const { POST: retryTask } = await import(
+  "../../src/app/api/tasks/[taskId]/retry/route.ts"
+);
+
+test("maps retry conflicts and missing tasks separately from unexpected failures", () => {
+  assert.equal(typeof retryErrorStatus, "function");
+  assert.equal(retryErrorStatus(new TaskNotFoundError("Task not found: missing")), 404);
+  assert.equal(retryErrorStatus(new RetryConflictError("Work item is not eligible")), 409);
+  assert.equal(retryErrorStatus(new Error("Database unavailable")), 500);
+});
 
 test("retry route rejects unrelated or malformed selection fields before starting runtime", async () => {
   const response = await retryTask(new Request("http://localhost/api/tasks/task-1/retry", {

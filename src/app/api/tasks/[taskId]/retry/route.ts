@@ -1,4 +1,5 @@
 import { getAchatRecoveryService, startAchatRuntime } from "../../../../../server/runtime-bootstrap.ts";
+import { retryErrorStatus } from "../../../../../server/lifecycle/retry-errors.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to retry interrupted work";
     return Response.json({ error: message }, {
-      status: message.startsWith("Task not found:") ? 404 : 409,
+      status: retryErrorStatus(error),
     });
   }
 }

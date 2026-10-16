@@ -8,6 +8,7 @@ import { createSessionRepository } from "../db/repositories/session-repository.t
 import { createWorkItemRepository } from "../db/repositories/work-item-repository.ts";
 import type { Run } from "../domain/types.ts";
 import { createTraceExtension } from "../pi/trace-extension.ts";
+import { RetryConflictError, TaskNotFoundError } from "./retry-errors.ts";
 
 export interface RecoverySummary {
   interruptedRuns: number;
@@ -94,17 +95,26 @@ export function createRecoveryService(db: Database.Database, options: RecoveryOp
     });
   }
 
-  function ensureWorkItemInterrupted(run: Run): void {
-    const workItem = workItems.getWorkItem(run.workItemId);
-    if (!workItem || workItem.status !== "running") return;
-    const hasCompletedRun = db.prepare(`
-      SELECT 1 FROM runs WHERE work_item_id = ? AND status = 'completed' LIMIT 1
-    `).get(workItem.id);
-    workItems.updateWorkItemStatus(
-      workItem.id,
-      hasCompletedRun ? "completed" : "interrupted",
-      run.completedAt ?? now(),
-    );
+  function reconcileWorkItemStatus(workItemId: string): void {
+    const workItem = workItems.getWorkItem(workItemId);
+    if (!workItem || workItem.status === "completed") return;
+    const history = runs.listRunsForWorkItem(workItemId);
+    if (!history.length) return;
+    const latest = history.at(-1)!;
+    const completedRun = history.find((run) => run.status === "completed");
+    const terminalRun = completedRun ?? latest;
+    const status = completedRun
+      ? completedRun.status
+      : latest.status === "failed" || latest.status === "interrupted"
+        ? latest.status
+        : undefined;
+    if (status && workItem.status !== status) {
+      workItems.updateWorkItemStatus(
+        workItem.id,
+        status,
+        terminalRun.completedAt ?? now(),
+      );
+    }
   }
 
   return {
@@ -133,11 +143,11 @@ export function createRecoveryService(db: Database.Database, options: RecoveryOp
         const run = candidate.wasRunning
           ? db.transaction(() => {
               const interrupted = runs.updateRunStatus(candidate.run.id, "interrupted", now());
-              ensureWorkItemInterrupted(interrupted);
+              reconcileWorkItemStatus(interrupted.workItemId);
               return interrupted;
             })()
           : candidate.run;
-        if (!candidate.wasRunning) ensureWorkItemInterrupted(run);
+        if (!candidate.wasRunning) reconcileWorkItemStatus(run.workItemId);
         if (candidate.wasRunning) interruptedRuns += 1;
         const mapping = sessions.getSessionMappingForContact(run.contactId, run.taskId);
         const event = interruptedEvent(run, mapping?.piSessionId);
@@ -147,13 +157,20 @@ export function createRecoveryService(db: Database.Database, options: RecoveryOp
         }
       }
 
+      const workItemsWithRunRows = db.prepare(`
+        SELECT DISTINCT work_item_id AS workItemId FROM runs
+      `).all() as Array<{ workItemId: string }>;
+      for (const { workItemId } of workItemsWithRunRows) {
+        reconcileWorkItemStatus(workItemId);
+      }
+
       return { interruptedRuns, associatedSessions: associatedMappingIds.size };
     },
 
     async retryInterruptedWork(taskId: string, workItemIds?: string[]): Promise<Run[]> {
-      if (!tasks.getTask(taskId)) throw new Error(`Task not found: ${taskId}`);
+      if (!tasks.getTask(taskId)) throw new TaskNotFoundError(`Task not found: ${taskId}`);
       if (workItemIds !== undefined && !Array.isArray(workItemIds)) {
-        throw new Error("workItemIds must be an array of work item IDs");
+        throw new RetryConflictError("workItemIds must be an array of work item IDs");
       }
 
       const requestedIds = workItemIds === undefined
@@ -171,33 +188,35 @@ export function createRecoveryService(db: Database.Database, options: RecoveryOp
       const eligible: Array<{ id: string; contactId: string }> = [];
       for (const id of requestedIds) {
         if (typeof id !== "string" || !id) {
-          throw new Error("Each workItemId must be a non-empty string");
+          throw new RetryConflictError("Each workItemId must be a non-empty string");
         }
         const workItem = workItems.getWorkItem(id);
-        if (!workItem) throw new Error(`Work item not found: ${id}`);
+        if (!workItem) throw new RetryConflictError(`Work item not found: ${id}`);
         if (workItem.taskId !== taskId) {
-          throw new Error(`Work item ${id} does not belong to task ${taskId}`);
+          throw new RetryConflictError(`Work item ${id} does not belong to task ${taskId}`);
         }
         const history = runs.listRunsForWorkItem(id);
         if (workItem.status === "completed" || history.some((run) => run.status === "completed")) {
-          throw new Error(`Completed work item cannot be retried: ${id}`);
+          throw new RetryConflictError(`Completed work item cannot be retried: ${id}`);
         }
         const latest = history.at(-1);
         if (workItem.status !== "interrupted" || latest?.status !== "interrupted") {
-          throw new Error(`Work item is not eligible for retry: ${id}`);
+          throw new RetryConflictError(`Work item is not eligible for retry: ${id}`);
         }
         const mapping = sessions.getSessionMappingForContact(workItem.contactId, taskId);
         if (!mapping) {
-          throw new Error(`No mapped Pi session exists for work item ${id}`);
+          throw new RetryConflictError(`No mapped Pi session exists for work item ${id}`);
         }
         if (options.hasSessionFile && !options.hasSessionFile(mapping.sessionFile)) {
-          throw new Error(`Mapped Pi session file is missing for work item ${id}`);
+          throw new RetryConflictError(`Mapped Pi session file is missing for work item ${id}`);
         }
         eligible.push({ id, contactId: workItem.contactId });
       }
 
       if (!eligible.length) return [];
-      if (!options.runWorkItem) throw new Error("Task work queue is not available for retry");
+      if (!options.runWorkItem) {
+        throw new RetryConflictError("Task work queue is not available for retry");
+      }
 
       const retriedRuns: Run[] = [];
       for (const { id } of eligible) {
@@ -210,7 +229,9 @@ export function createRecoveryService(db: Database.Database, options: RecoveryOp
               WHERE runs.work_item_id = work_items.id AND runs.status = 'completed'
             )
         `).run(now(), id, taskId).changes === 1);
-        if (!reset()) throw new Error(`Work item is no longer eligible for retry: ${id}`);
+        if (!reset()) {
+          throw new RetryConflictError(`Work item is no longer eligible for retry: ${id}`);
+        }
         try {
           retriedRuns.push(await options.runWorkItem(id));
         } catch (error) {
