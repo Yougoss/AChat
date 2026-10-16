@@ -182,48 +182,14 @@ function searchVisibleMessagesInDatabase(
     if (row.name) group.title = row.name;
   }
 
-  const findLatestMessage = db.prepare(`
-    SELECT messages.id AS messageId, messages.content, messages.created_at AS createdAt
-    FROM messages
-    JOIN conversations ON conversations.id = messages.conversation_id
-    WHERE (
-      (? = 'contact' AND conversations.kind = 'private' AND conversations.contact_id = ?)
-      OR (
-        ? = 'group'
-        AND conversations.kind = 'task'
-        AND conversations.group_id = ?
-        AND (
-          ? IS NULL
-          OR EXISTS (
-            SELECT 1 FROM task_members
-            WHERE task_members.task_id = conversations.task_id
-              AND task_members.contact_id = ?
-          )
-        )
-      )
-    )
-    ORDER BY messages.created_at DESC, messages.id DESC
-    LIMIT 1
-  `);
-
   const results = [...resultGroups.values()].map((group): SearchResult => {
-    const contextualMessage = group.previewMessage
-      ? undefined
-      : findLatestMessage.get(
-        group.ownerType,
-        group.ownerId,
-        group.ownerType,
-        group.ownerId,
-        scopedContactId,
-        scopedContactId,
-      ) as { messageId: string; content: string; createdAt: string } | undefined;
     const message = group.previewMessage
       ? {
         messageId: group.previewMessage.messageId!,
         content: group.previewMessage.content,
         createdAt: group.previewMessage.createdAt,
       }
-      : contextualMessage;
+      : undefined;
     const location = message
       ? `#message-${encodeURIComponent(message.messageId)}`
       : "";

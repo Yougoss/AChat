@@ -94,9 +94,18 @@ test("searches contact, group, task metadata and user-visible messages with mess
     (result) => result.ownerType === "contact" && result.ownerId === "contact-ada",
   );
   assert.ok(contactHit);
-  assert.equal(contactHit.messageId, "private-hit");
-  assert.equal(contactHit.href, "/contacts/contact-ada#message-private-hit");
-  assert.match(contactHit.preview, /Discuss the launch plan/);
+  assert.equal(contactHit.messageId, null);
+  assert.equal(contactHit.matchedAt, null);
+  assert.equal(contactHit.matchingMessageCount, 0);
+  assert.equal(contactHit.href, "/contacts/contact-ada");
+  assert.equal(contactHit.preview, "");
+  const privateMessageHit = (await searchVisibleMessages("launch plan")).find(
+    (result) => result.ownerType === "contact" && result.ownerId === "contact-ada",
+  );
+  assert.ok(privateMessageHit);
+  assert.equal(privateMessageHit.messageId, "private-hit");
+  assert.equal(privateMessageHit.href, "/contacts/contact-ada#message-private-hit");
+  assert.match(privateMessageHit.preview, /Discuss the launch plan/);
 
   assert.ok((await searchVisibleMessages("Reliable")).some(
     (result) => result.ownerType === "contact" && result.ownerId === "contact-ada",
@@ -106,9 +115,11 @@ test("searches contact, group, task metadata and user-visible messages with mess
   );
   assert.ok(groupHit);
   assert.equal(groupHit.title, "Orchid migration");
-  assert.equal(groupHit.messageId, "task-hit");
-  assert.equal(groupHit.href, "/groups/group-orchid#message-task-hit");
-  assert.match(groupHit.preview, /Preserve the conversation context/);
+  assert.equal(groupHit.messageId, null);
+  assert.equal(groupHit.matchedAt, null);
+  assert.equal(groupHit.matchingMessageCount, 0);
+  assert.equal(groupHit.href, "/groups/group-orchid");
+  assert.equal(groupHit.preview, "");
   assert.ok((await searchVisibleMessages("Infrastructure")).some(
     (result) => result.ownerType === "group" && result.ownerId === "group-orchid",
   ));
@@ -118,6 +129,42 @@ test("searches contact, group, task metadata and user-visible messages with mess
   assert.ok((await searchVisibleMessages("conversation context")).some(
     (result) => result.messageId === "task-hit",
   ));
+});
+
+test("keeps unrelated messages out of metadata-only result fields and ranking", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  const { searchVisibleMessages } = createSearchService(db);
+  insertContact(db, {
+    id: "contact-zeta",
+    name: "Zeta metadata",
+    description: "orchid specialist",
+  });
+  insertContact(db, {
+    id: "contact-alpha",
+    name: "Alpha metadata",
+    description: "orchid specialist",
+  });
+  const zetaConversation = insertPrivateConversation(db, "contact-zeta");
+  insertMessage(db, {
+    id: "unrelated-zeta-message",
+    conversationId: zetaConversation,
+    content: "A recent unrelated note",
+    createdAt: "2026-10-16T10:00:00.000Z",
+  });
+
+  const results = await searchVisibleMessages("orchid");
+  assert.deepEqual(
+    results.map(({ ownerId }) => ownerId),
+    ["contact-alpha", "contact-zeta"],
+  );
+  const zetaResult = results.find(({ ownerId }) => ownerId === "contact-zeta");
+  assert.ok(zetaResult);
+  assert.equal(zetaResult.matchingMessageCount, 0);
+  assert.equal(zetaResult.matchedAt, null);
+  assert.equal(zetaResult.preview, "");
+  assert.equal(zetaResult.messageId, null);
+  assert.equal(zetaResult.href, "/contacts/contact-zeta");
 });
 
 test("ranks by matching message count, most recent match, then exact phrase weight", async (t) => {
