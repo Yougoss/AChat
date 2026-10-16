@@ -88,6 +88,58 @@ test("denial resolves the blocked action as denied and does not accept browser s
   assert.equal(await pendingAction, "denied");
 });
 
+test("rejects approval after its run becomes terminal without releasing the blocked tool", async (t) => {
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  const service = createApprovalService(fixture.db, { idFactory: () => "approval-stale-run" });
+  let settled = false;
+  const pendingAction = service.requestToolApproval(
+    context(fixture, { toolCallId: "call-stale-run" }),
+    { toolName: "bash", input: { command: "must stay blocked" } },
+  ).then((decision) => {
+    settled = true;
+    return decision;
+  });
+
+  fixture.db.prepare("UPDATE runs SET status = 'completed', completed_at = ? WHERE id = ?")
+    .run("2026-10-16T02:10:00.000Z", fixture.sourceRun.id);
+
+  await assert.rejects(
+    service.decideToolApproval("approval-stale-run", { decision: "approve" }),
+    /stale/i,
+  );
+  await Promise.resolve();
+  assert.equal(settled, false);
+  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-run").status, "pending");
+  void pendingAction;
+});
+
+test("rejects approval after its work item becomes terminal without releasing the blocked tool", async (t) => {
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  const service = createApprovalService(fixture.db, { idFactory: () => "approval-stale-work-item" });
+  let settled = false;
+  const pendingAction = service.requestToolApproval(
+    context(fixture, { toolCallId: "call-stale-work-item" }),
+    { toolName: "bash", input: { command: "must stay blocked" } },
+  ).then((decision) => {
+    settled = true;
+    return decision;
+  });
+
+  fixture.db.prepare("UPDATE work_items SET status = 'completed' WHERE id = ?")
+    .run(fixture.sourceWorkItem.id);
+
+  await assert.rejects(
+    service.decideToolApproval("approval-stale-work-item", { decision: "approve" }),
+    /stale/i,
+  );
+  await Promise.resolve();
+  assert.equal(settled, false);
+  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-work-item").status, "pending");
+  void pendingAction;
+});
+
 test("rejects mismatched server session scope and stale or already-decided IDs", async (t) => {
   const fixture = createExecutionFixture();
   t.after(() => fixture.db.close());

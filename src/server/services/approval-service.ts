@@ -21,7 +21,10 @@ interface DeferredDecision {
   promise: Promise<"approved" | "denied">;
   resolve: (decision: "approved" | "denied") => void;
   requestKey: string;
+  context: ToolApprovalContext;
 }
+
+class StaleApprovalError extends Error {}
 
 interface ApprovalWaitState {
   pending: Map<string, DeferredDecision>;
@@ -59,12 +62,14 @@ export function createApprovalService(
   const idFactory = options.idFactory ?? randomUUID;
   const now = options.now ?? (() => new Date().toISOString());
 
-  function assertScope(context: ToolApprovalContext): void {
+  function assertScope(context: ToolApprovalContext, stale = false): void {
     if (
       !context.taskId || !context.workItemId || !context.runId
       || !context.piSessionId || !context.toolCallId
     ) {
-      throw new Error("Approval server scope is incomplete");
+      throw stale
+        ? new StaleApprovalError("Stale approval: bound server scope is incomplete")
+        : new Error("Approval server scope is incomplete");
     }
     const scope = db.prepare(`
       SELECT 1
@@ -83,7 +88,11 @@ export function createApprovalService(
         AND pi_session_mappings.pi_session_id = ?
         AND pi_session_mappings.kind = 'task'
     `).get(context.workItemId, context.taskId, context.runId, context.piSessionId);
-    if (!scope) throw new Error("Approval scope does not match the active task, work item, run, and Pi session");
+    if (!scope) {
+      throw stale
+        ? new StaleApprovalError("Stale approval: the bound task, work item, run, or Pi session is no longer active")
+        : new Error("Approval scope does not match the active task, work item, run, and Pi session");
+    }
   }
 
   function appendApprovalEvent(
@@ -133,6 +142,7 @@ export function createApprovalService(
         }),
         resolve: (decision) => resolve(decision),
         requestKey,
+        context: { ...context },
       };
       const approvalId = idFactory();
       if (waitState.pending.has(approvalId)) {
@@ -184,12 +194,22 @@ export function createApprovalService(
       }
       const status = input.decision === "approve" ? "approved" : "denied";
       const decidedAt = now();
-      const resolved = db.transaction(() => {
-        const updated = approvals.updateApprovalStatus(approvalId, status, decidedAt);
-        attention.resolveAttentionRequest(`${approvalId}:attention`, "resolved");
-        appendApprovalEvent(updated, "approval.decided", { decidedAt });
-        return updated;
-      })();
+      let resolved: Approval;
+      try {
+        resolved = db.transaction(() => {
+          assertScope(deferred.context, true);
+          const updated = approvals.updateApprovalStatus(approvalId, status, decidedAt);
+          attention.resolveAttentionRequest(`${approvalId}:attention`, "resolved");
+          appendApprovalEvent(updated, "approval.decided", { decidedAt });
+          return updated;
+        })();
+      } catch (error) {
+        if (error instanceof StaleApprovalError) {
+          waitState.pending.delete(approvalId);
+          waitState.activeToolCalls.delete(deferred.requestKey);
+        }
+        throw error;
+      }
       waitState.pending.delete(approvalId);
       waitState.activeToolCalls.delete(deferred.requestKey);
       deferred.resolve(status);

@@ -81,6 +81,7 @@ export function createTaskStatusService(
       }
 
       const starts = runEvents.filter((event) => event.type === "tool.started");
+      let hasUnfinishedTool = false;
       for (const start of starts.toReversed()) {
         const id = toolCallId(start);
         if (!id) continue;
@@ -89,13 +90,24 @@ export function createTaskStatusService(
           && toolCallId(event) === id
           && isTerminalToolEvent(event));
         if (terminal) continue;
+        hasUnfinishedTool = true;
         const elapsed = Date.parse(now()) - Date.parse(start.createdAt);
-        if (!Number.isFinite(elapsed)) break;
+        if (Number.isFinite(elapsed) && elapsed >= 30 * 60 * 1000) {
+          return {
+            runStatus: run.status,
+            taskStatus: task.taskStatus,
+            workItemStatus: task.workItemStatus,
+            stuck: "stuck",
+            lifecycleEvidence: "tool_active",
+          };
+        }
+      }
+      if (hasUnfinishedTool) {
         return {
           runStatus: run.status,
           taskStatus: task.taskStatus,
           workItemStatus: task.workItemStatus,
-          stuck: elapsed >= 30 * 60 * 1000 ? "stuck" : "not_stuck",
+          stuck: "not_stuck",
           lifecycleEvidence: "tool_active",
         };
       }

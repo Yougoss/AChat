@@ -11,7 +11,7 @@
     "build": "next build --webpack",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --import ./.test-support/register-tsx-loader.mjs --test test/**/*.test.mjs"
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.2.0",

@@ -35,6 +35,24 @@ test("marks a run stuck at 30 minutes from an unfinished tool start, not before 
   assert.equal(status.getRunExecutionStatus("developer-run").stuck, "stuck");
 });
 
+test("reports stuck when an older unfinished tool crosses the threshold despite a newer active tool", (t) => {
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  appendRunEvent(fixture.db, "old-tool-start", "tool.started", start, {
+    toolCallId: "call-old",
+    toolName: "bash",
+  });
+  appendRunEvent(fixture.db, "new-tool-start", "tool.started", "2026-10-16T02:45:00.000Z", {
+    toolCallId: "call-new",
+    toolName: "bash",
+  });
+  const status = createTaskStatusService(fixture.db, {
+    now: () => "2026-10-16T03:00:00.000Z",
+  }).getRunExecutionStatus("developer-run");
+
+  assert.equal(status.stuck, "stuck");
+});
+
 test("does not mark tool approval or input waits stuck and keeps streaming distinct from completion", async (t) => {
   const fixture = createExecutionFixture();
   t.after(() => fixture.db.close());
