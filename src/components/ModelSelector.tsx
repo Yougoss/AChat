@@ -44,8 +44,9 @@ export function ModelSelector({
   const [selectedModelId, setSelectedModelId] = useState(currentModelId);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const currentModel = models.find((model) => model.modelId === selectedModelId);
-  const visibleGroups = groupModelsByProvider(filterModels(models, query));
+  const copilotModels = models.filter((model) => model.provider === "github-copilot");
+  const currentModel = copilotModels.find((model) => model.modelId === selectedModelId);
+  const visibleGroups = groupModelsByProvider(filterModels(copilotModels, query));
 
   async function saveModel(model: SelectableModel) {
     setSaving(true);

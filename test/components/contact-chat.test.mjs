@@ -1,18 +1,153 @@
 import assert from "node:assert/strict";
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import test from "node:test";
+import { afterEach, test } from "node:test";
+import { JSDOM } from "jsdom";
 import { ContactChat } from "../../src/components/ContactChat.tsx";
 
-test("renders contact-scoped conversation controls and a draft-only task suggestion action", () => {
-  const html = renderToStaticMarkup(React.createElement(ContactChat, {
-    contact: { id: "contact-1", name: "Planner", description: "Plans work" },
-    messages: [{ id: "message-1", role: "assistant", content: "Ready to review evidence." }],
-  }));
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.Node = dom.window.Node;
+globalThis.MutationObserver = dom.window.MutationObserver;
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
 
-  assert.match(html, /aria-label="Message Planner"/);
-  assert.match(html, /Send message/);
-  assert.match(html, /Ready to review evidence\./);
-  assert.match(html, /Draft a task from this conversation/);
-  assert.doesNotMatch(html, /Dispatch|Start run/i);
+afterEach(cleanup);
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  };
+}
+
+function contact(id, name) {
+  return { id, name, description: `${name} description` };
+}
+
+function evidence(id, title) {
+  return {
+    taskId: id,
+    title,
+    lastActivity: "2026-10-15T10:00:00.000Z",
+    status: "completed",
+    sessionRefs: [],
+  };
+}
+
+test("switching contact reloads its conversation and sends to the new contact", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  let finishContactASend;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    requests.push({ url, method: init.method ?? "GET" });
+    if (url === "/api/contacts/contact-a/messages" && init.method === "POST") {
+      return new Promise((resolve) => {
+        finishContactASend = resolve;
+      });
+    }
+    if (url === "/api/contacts/contact-a") {
+      return jsonResponse({ contact: contact("contact-a", "Contact A") });
+    }
+    if (url === "/api/contacts/contact-a/messages") {
+      return jsonResponse({ messages: [{
+        id: "message-a",
+        role: "user",
+        content: "Private message for Contact A",
+        createdAt: "2026-10-15T10:00:00.000Z",
+      }] });
+    }
+    if (url === "/api/contacts/contact-a/sessions?") {
+      return jsonResponse({ items: [evidence("task-a", "Contact A evidence")] });
+    }
+    if (url === "/api/contacts/contact-b") {
+      return jsonResponse({ contact: contact("contact-b", "Contact B") });
+    }
+    if (url === "/api/contacts/contact-b/messages" && init.method === "POST") {
+      return jsonResponse({ exchange: {
+        userMessage: {
+          id: "sent-b",
+          role: "user",
+          content: "Send to Contact B",
+          createdAt: "2026-10-15T11:01:00.000Z",
+        },
+        assistantMessage: {
+          id: "reply-b",
+          role: "assistant",
+          content: "Reply from Contact B",
+          createdAt: "2026-10-15T11:01:01.000Z",
+        },
+      } });
+    }
+    if (url === "/api/contacts/contact-b/messages") {
+      return jsonResponse({ messages: [{
+        id: "message-b",
+        role: "user",
+        content: "Private message for Contact B",
+        createdAt: "2026-10-15T11:00:00.000Z",
+      }] });
+    }
+    if (url === "/api/contacts/contact-b/sessions?") {
+      return jsonResponse({ items: [evidence("task-b", "Contact B evidence")] });
+    }
+    throw new Error(`Unexpected request: ${init.method ?? "GET"} ${url}`);
+  };
+
+  try {
+    const view = render(React.createElement(ContactChat, { contactId: "contact-a" }));
+    await screen.findByText("Contact A evidence");
+    await screen.findByText("Private message for Contact A");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Contact A" }), {
+      target: { value: "Pending message for Contact A" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send message" }).closest("form"));
+    assert.ok(finishContactASend);
+
+    view.rerender(React.createElement(ContactChat, { contactId: "contact-b" }));
+
+    await screen.findByRole("heading", { name: "Contact B" });
+    await screen.findByText("Private message for Contact B");
+    await screen.findByText("Contact B evidence");
+    assert.equal(screen.queryByText("Private message for Contact A"), null);
+    assert.equal(screen.queryByText("Contact A evidence"), null);
+    assert.equal(screen.queryByText("task-a"), null);
+
+    await act(async () => {
+      finishContactASend(jsonResponse({ exchange: {
+        userMessage: {
+          id: "sent-a",
+          role: "user",
+          content: "Pending message for Contact A",
+          createdAt: "2026-10-15T10:01:00.000Z",
+        },
+        assistantMessage: {
+          id: "reply-a",
+          role: "assistant",
+          content: "Late reply from Contact A",
+          createdAt: "2026-10-15T10:01:01.000Z",
+        },
+      } }));
+    });
+    assert.equal(screen.queryByText("Pending message for Contact A"), null);
+    assert.equal(screen.queryByText("Late reply from Contact A"), null);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Contact B" }), {
+      target: { value: "Send to Contact B" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send message" }).closest("form"));
+    await screen.findByText("Reply from Contact B");
+
+    assert.ok(requests.some(({ url, method }) =>
+      url === "/api/contacts/contact-b/messages" && method === "POST"));
+    assert.ok(requests.some(({ url, method }) =>
+      url === "/api/contacts/contact-a/messages" && method === "POST"));
+    assert.equal(screen.queryByText("Private message for Contact A"), null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

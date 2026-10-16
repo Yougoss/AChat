@@ -20,8 +20,12 @@ interface ProviderAuthControlsProps {
   providers?: AuthProvider[];
 }
 
+function copilotProviders(providers: AuthProvider[] | undefined): AuthProvider[] {
+  return (providers ?? []).filter((provider) => provider.providerId === "github-copilot");
+}
+
 export function ProviderAuthControls({ providers: initialProviders }: ProviderAuthControlsProps) {
-  const [providers, setProviders] = useState(initialProviders ?? []);
+  const [providers, setProviders] = useState(() => copilotProviders(initialProviders));
   const [prompt, setPrompt] = useState<LoginPrompt | null>(null);
   const [promptValue, setPromptValue] = useState("");
   const [message, setMessage] = useState("");
@@ -34,7 +38,7 @@ export function ProviderAuthControls({ providers: initialProviders }: ProviderAu
       const response = await fetch("/api/auth/providers");
       const result = await response.json() as { providers?: AuthProvider[]; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Unable to load provider status");
-      setProviders(result.providers ?? []);
+      setProviders(copilotProviders(result.providers));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load provider status");
     }
@@ -50,7 +54,7 @@ export function ProviderAuthControls({ providers: initialProviders }: ProviderAu
         return result;
       })
       .then((result) => {
-        if (active) setProviders(result.providers ?? []);
+        if (active) setProviders(copilotProviders(result.providers));
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "Unable to load provider status");

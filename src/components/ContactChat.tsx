@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import type { Contact, Message, Project } from "../server/domain/types.ts";
@@ -24,12 +24,33 @@ function readableError(value: unknown, fallback: string): string {
 }
 
 export function ContactChat({
+  contactId,
+  contact,
+  messages,
+}: ContactChatProps) {
+  const activeContactId = contactId ?? contact?.id ?? "unselected";
+  return (
+    <ContactChatSession
+      key={activeContactId}
+      contactId={contactId}
+      contact={contact}
+      messages={messages}
+    />
+  );
+}
+
+function ContactChatSession({
   contactId: providedContactId,
   contact: initialContact,
   messages: initialMessages,
 }: ContactChatProps) {
-  const [contact, setContact] = useState(initialContact);
-  const [messages, setMessages] = useState(initialMessages ?? []);
+  const contactId = providedContactId ?? initialContact?.id;
+  const [contact, setContact] = useState(
+    initialContact?.id === contactId ? initialContact : undefined,
+  );
+  const [messages, setMessages] = useState(
+    initialContact?.id === contactId ? initialMessages ?? [] : [],
+  );
   const [content, setContent] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -39,11 +60,22 @@ export function ContactChat({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const contactId = contact?.id ?? providedContactId;
+  const mounted = useRef(true);
 
   useEffect(() => {
-    if (!contactId || (initialContact && initialMessages)) return;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!contactId) return;
     let active = true;
+    if (initialContact?.id === contactId && initialMessages) return () => {
+      active = false;
+    };
+
     void Promise.all([
       fetch(`/api/contacts/${encodeURIComponent(contactId)}`).then((response) => response.json()),
       fetch(`/api/contacts/${encodeURIComponent(contactId)}/messages`).then((response) => response.json()),
@@ -76,15 +108,16 @@ export function ContactChat({
         exchange?: { userMessage: Message; assistantMessage: Message };
         error?: string;
       };
+      if (!mounted.current) return;
       if (!response.ok || !result.exchange) {
         throw new Error(result.error ?? "Unable to send message");
       }
       setMessages((existing) => [...existing, result.exchange!.userMessage, result.exchange!.assistantMessage]);
       setContent("");
     } catch (cause) {
-      setError(readableError(cause, "Unable to send message"));
+      if (mounted.current) setError(readableError(cause, "Unable to send message"));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
 
@@ -114,6 +147,7 @@ export function ContactChat({
         { draft?: Draft; error?: string },
         { projects?: Project[]; error?: string },
       ];
+      if (!mounted.current) return;
       if (!draftResponse.ok || !draftResult.draft) {
         throw new Error(draftResult.error ?? "Unable to draft a task");
       }
@@ -123,9 +157,9 @@ export function ContactChat({
       setDraftDescription(draftResult.draft.description);
       setProjects(projectResult.projects ?? []);
     } catch (cause) {
-      setError(readableError(cause, "Unable to draft a task"));
+      if (mounted.current) setError(readableError(cause, "Unable to draft a task"));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
 
@@ -147,17 +181,19 @@ export function ContactChat({
         }),
       });
       const result = await response.json() as { error?: string };
+      if (!mounted.current) return;
       if (!response.ok) throw new Error(result.error ?? "Unable to create group and task");
       setDraft(null);
       setNotice("Group and task created. No work was dispatched.");
     } catch (cause) {
-      setError(readableError(cause, "Unable to create group and task"));
+      if (mounted.current) setError(readableError(cause, "Unable to create group and task"));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
 
-  if (!contact) {
+  const visibleContact = contact?.id === contactId ? contact : undefined;
+  if (!visibleContact) {
     return (
       <section className="conversation-panel" aria-live="polite">
         <p>{error || "Loading contact conversation…"}</p>
@@ -171,17 +207,17 @@ export function ContactChat({
         <header className="conversation-header">
           <div>
             <p className="eyebrow">Private contact channel</p>
-            <h1 id="conversation-title">{contact.name}</h1>
-            <p>{contact.description || "No contact description provided."}</p>
+            <h1 id="conversation-title">{visibleContact.name}</h1>
+            <p>{visibleContact.description || "No contact description provided."}</p>
           </div>
-          <Link className="button button-quiet" href={`/settings/contacts/${encodeURIComponent(contact.id)}`}>
+          <Link className="button button-quiet" href={`/settings/contacts/${encodeURIComponent(visibleContact.id)}`}>
             Contact settings
           </Link>
         </header>
-        <ol className="message-list" aria-label={`${contact.name} conversation`} aria-live="polite">
+        <ol className="message-list" aria-label={`${visibleContact.name} conversation`} aria-live="polite">
           {messages.map((message) => (
             <li className={`message message-${message.role}`} key={message.id}>
-              <span className="message-role">{message.role === "assistant" ? contact.name : "You"}</span>
+              <span className="message-role">{message.role === "assistant" ? visibleContact.name : "You"}</span>
               <p>{message.content}</p>
               <time className="evidence-meta" dateTime={message.createdAt}>
                 {new Date(message.createdAt).toLocaleString()}
@@ -190,19 +226,19 @@ export function ContactChat({
           ))}
           {!messages.length ? (
             <li className="conversation-empty">
-              <p>Start a private conversation with {contact.name}.</p>
+              <p>Start a private conversation with {visibleContact.name}.</p>
               <p className="evidence-meta">Messages and replies stay in this contact’s conversation.</p>
             </li>
           ) : null}
         </ol>
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
-          <label className="visually-hidden" htmlFor={`message-${contact.id}`}>Message {contact.name}</label>
+          <label className="visually-hidden" htmlFor={`message-${visibleContact.id}`}>Message {visibleContact.name}</label>
           <textarea
-            id={`message-${contact.id}`}
-            aria-label={`Message ${contact.name}`}
+            id={`message-${visibleContact.id}`}
+            aria-label={`Message ${visibleContact.name}`}
             value={content}
             onChange={(event) => setContent(event.currentTarget.value)}
-            placeholder={`Write to ${contact.name}…`}
+            placeholder={`Write to ${visibleContact.name}…`}
             rows={3}
             required
           />
@@ -262,7 +298,7 @@ export function ContactChat({
         </section>
       ) : null}
 
-      <ContactSessionResults contactId={contact.id} />
+      <ContactSessionResults key={visibleContact.id} contactId={visibleContact.id} />
     </div>
   );
 }
