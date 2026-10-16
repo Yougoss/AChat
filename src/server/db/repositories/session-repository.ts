@@ -52,6 +52,24 @@ export function createSessionRepository(db: Database.Database) {
       return row ? { ...asRecord<SessionMappingRow>(row) } : undefined;
     },
     getSessionMappingByPiSessionId: findByPiSessionId,
+    getSessionMappingForContact(
+      contactId: string,
+      taskId: string | null,
+    ): PiSessionMapping | undefined {
+      const row = db.prepare(`
+        SELECT id, contact_id AS contactId, task_id AS taskId,
+               conversation_id AS conversationId, kind, pi_session_id AS piSessionId,
+               session_file AS sessionFile, created_at AS createdAt
+        FROM pi_session_mappings
+        WHERE contact_id = ? AND task_id IS ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+      `).get(contactId, taskId);
+      return row ? { ...asRecord<SessionMappingRow>(row) } : undefined;
+    },
+    deleteSessionMapping(id: string): boolean {
+      return db.prepare("DELETE FROM pi_session_mappings WHERE id = ?").run(id).changes > 0;
+    },
     listSessionMappingsForContact(contactId: string): PiSessionMapping[] {
       return asRecords<SessionMappingRow>(db.prepare(`
         SELECT id, contact_id AS contactId, task_id AS taskId,

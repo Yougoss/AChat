@@ -8,15 +8,15 @@ import { resolveDataDir } from "../app-runtime.ts";
 const migrationFiles = [
   {
     version: 1,
-    path: fileURLToPath(new URL("./migrations/001_initial.sql", import.meta.url)),
+    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/001_initial.sql"),
   },
   {
     version: 2,
-    path: fileURLToPath(new URL("./migrations/002_contact_unread_boundaries.sql", import.meta.url)),
+    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/002_contact_unread_boundaries.sql"),
   },
   {
     version: 3,
-    path: fileURLToPath(new URL("./migrations/003_attention_run_work_item_scope.sql", import.meta.url)),
+    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/003_attention_run_work_item_scope.sql"),
   },
 ];
 const latestMigrationVersion = migrationFiles.at(-1)!.version;

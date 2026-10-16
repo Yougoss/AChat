@@ -176,3 +176,30 @@ test("database module imports without opening a database", async () => {
     else process.env.ACHAT_DATA_DIR = previousDataDir;
   }
 });
+
+test("database migrations do not depend on the global URL constructor", async () => {
+  const NativeURL = globalThis.URL;
+  globalThis.URL = class BundledURL {
+    constructor(url, base) {
+      this.href = new NativeURL(url, base).href;
+    }
+  };
+  let clientModule;
+  try {
+    clientModule = await import(
+      `../../src/server/db/client.ts?url-constructor=${process.pid}`
+    );
+  } finally {
+    globalThis.URL = NativeURL;
+  }
+  const db = new Database(":memory:");
+  try {
+    clientModule.migrate(db);
+    assert.equal(
+      db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version,
+      3,
+    );
+  } finally {
+    db.close();
+  }
+});
