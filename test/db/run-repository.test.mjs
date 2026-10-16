@@ -10,6 +10,7 @@ test("stores a distinct durable run row for each work-item attempt", (t) => {
   t.after(() => db.close());
   seedProject(db);
   seedContact(db);
+  seedContact(db, "contact-2");
   const { task } = createGroupTaskRepository(db).createGroupWithTask({
     group: { id: "group-1", name: "Planning", description: "Plan" },
     task: { id: "task-1", projectId: "project-1", description: "Task", status: "open" },
@@ -45,8 +46,23 @@ test("stores a distinct durable run row for each work-item attempt", (t) => {
   assert.deepEqual(repository.listRunsForWorkItem(item.id).map(({ id }) => id), ["run-1", "run-2"]);
   assert.equal(createWorkItemRepository(db).getWorkItem(item.id).status, "pending");
   assert.throws(() => repository.createRun({ ...run2, id: "duplicate-attempt" }), /unique|constraint/i);
-  repository.updateRunStatus(run1.id, "completed", "2026-10-15T10:00:30.000Z");
+  assert.throws(() => repository.createRun({
+    ...run2,
+    id: "wrong-contact-run",
+    attempt: 3,
+    contactId: "contact-2",
+  }), /contact|foreign key|constraint/i);
+  assert.throws(() => db.prepare(`
+    UPDATE work_items SET contact_id = 'contact-2'
+    WHERE id = ?
+  `).run(item.id), /contact|scope|immutable|constraint/i);
+  repository.completeRun(run1.id, "2026-10-15T10:00:30.000Z");
   assert.equal(repository.getRun(run1.id).status, "completed");
+  assert.throws(
+    () => repository.completeRun(run1.id, "2026-10-15T10:01:00.000Z"),
+    /running|completed|transition/i,
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM run_completions WHERE run_id = 'run-1'").get().count, 1);
   assert.throws(() => db.prepare(
     "UPDATE runs SET started_at = '2026-10-15T10:00:31.000Z' WHERE id = 'run-1'",
   ).run(), /immutable|identity/i);

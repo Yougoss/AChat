@@ -48,6 +48,7 @@ export interface Conversation {
   id: string;
   groupId: string | null;
   taskId: string | null;
+  contactId: ContactId | null;
   kind: "task" | "private";
   createdAt: string;
 }
@@ -81,6 +82,14 @@ export interface Run {
   completedAt: string | null;
 }
 
+export interface RunCompletion {
+  cursor: number;
+  runId: string;
+  taskId: string;
+  groupId: string;
+  completedAt: string;
+}
+
 export interface Approval {
   id: string;
   taskId: string;
@@ -91,6 +100,18 @@ export interface Approval {
   status: "pending" | "approved" | "denied";
   createdAt: string;
   decidedAt: string | null;
+}
+
+export interface AttentionRequest {
+  id: string;
+  taskId: string;
+  workItemId: string;
+  runId: string | null;
+  approvalId: string | null;
+  kind: "approval" | "input";
+  status: "open" | "resolved" | "cancelled";
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 export interface PiSessionMapping {

@@ -17,6 +17,7 @@ test("returns conversation messages in stable creation order", (t) => {
     id: "conversation-1",
     groupId: group.id,
     taskId: task.id,
+    contactId: null,
     kind: "task",
   });
   repository.appendMessage({

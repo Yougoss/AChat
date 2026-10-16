@@ -6,6 +6,7 @@ interface ConversationRow {
   id: string;
   groupId: string | null;
   taskId: string | null;
+  contactId: string | null;
   kind: "task" | "private";
   createdAt: string;
 }
@@ -31,12 +32,13 @@ export function createMessageRepository(db: Database.Database) {
         createdAt: input.createdAt ?? new Date().toISOString(),
       };
       db.prepare(`
-        INSERT INTO conversations (id, group_id, task_id, kind, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO conversations (id, group_id, task_id, contact_id, kind, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         conversation.id,
         conversation.groupId,
         conversation.taskId,
+        conversation.contactId,
         conversation.kind,
         conversation.createdAt,
       );
@@ -44,7 +46,8 @@ export function createMessageRepository(db: Database.Database) {
     },
     getConversation(id: string): Conversation | undefined {
       const row = db.prepare(`
-        SELECT id, group_id AS groupId, task_id AS taskId, kind, created_at AS createdAt
+        SELECT id, group_id AS groupId, task_id AS taskId, contact_id AS contactId,
+               kind, created_at AS createdAt
         FROM conversations WHERE id = ?
       `).get(id);
       return row ? { ...asRecord<ConversationRow>(row) } : undefined;

@@ -16,4 +16,6 @@ test("migration creates the project and task persistence tables", async (t) => {
   clientModule.migrate(db);
   assert.doesNotThrow(() => db.prepare("SELECT * FROM projects").all());
   assert.doesNotThrow(() => db.prepare("SELECT * FROM tasks").all());
+  assert.doesNotThrow(() => db.prepare("SELECT * FROM run_completions").all());
+  assert.doesNotThrow(() => db.prepare("SELECT * FROM attention_requests").all());
 });

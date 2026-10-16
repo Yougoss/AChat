@@ -20,6 +20,10 @@ test("persists approval decisions with exact task, work-item, session and tool-c
     group: { id: "group-1", name: "Planning", description: "Plan" },
     task: { id: "task-1", projectId: "project-1", description: "Task", status: "open" },
   });
+  seedContact(db, "contact-2");
+  const groupTasks = createGroupTaskRepository(db);
+  groupTasks.addTaskMember(task.id, "contact-1");
+  groupTasks.addTaskMember(task.id, "contact-2");
   const item = createWorkItemRepository(db).createWorkItem({
     id: "work-item-1",
     taskId: task.id,
@@ -31,6 +35,14 @@ test("persists approval decisions with exact task, work-item, session and tool-c
     id: "conversation-1",
     groupId: "group-1",
     taskId: task.id,
+    contactId: null,
+    kind: "task",
+  });
+  createMessageRepository(db).createConversation({
+    id: "conversation-2",
+    groupId: "group-1",
+    taskId: task.id,
+    contactId: null,
     kind: "task",
   });
   createSessionRepository(db).createSessionMapping({
@@ -41,6 +53,15 @@ test("persists approval decisions with exact task, work-item, session and tool-c
     kind: "task",
     piSessionId: "pi-session-1",
     sessionFile: "/sessions/session.jsonl",
+  });
+  createSessionRepository(db).createSessionMapping({
+    id: "mapping-2",
+    contactId: "contact-2",
+    taskId: task.id,
+    conversationId: "conversation-2",
+    kind: "task",
+    piSessionId: "pi-session-2",
+    sessionFile: "/sessions/session-2.jsonl",
   });
   const repository = createApprovalRepository(db);
   const approval = repository.createApproval({
@@ -55,11 +76,21 @@ test("persists approval decisions with exact task, work-item, session and tool-c
   });
 
   assert.deepEqual(repository.getApproval(approval.id), approval);
+  assert.throws(() => db.prepare(`
+    UPDATE work_items SET contact_id = 'contact-2'
+    WHERE id = ?
+  `).run(item.id), /contact|scope|immutable|constraint/i);
   assert.throws(() => repository.createApproval({
     ...approval,
     id: "wrong-task-approval",
     taskId: "another-task",
-  }), /foreign key|scope|constraint/i);
+  }), /foreign key|scope|constraint|contact/i);
+  assert.throws(() => repository.createApproval({
+    ...approval,
+    id: "wrong-contact-approval",
+    piSessionId: "pi-session-2",
+    toolCallId: "tool-call-2",
+  }), /contact|scope|constraint/i);
   assert.throws(() => db.prepare(
     "UPDATE approvals SET action_json = '{\"tool\":\"shell\"}' WHERE id = 'approval-1'",
   ).run(), /immutable|scope/i);

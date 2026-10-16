@@ -2,8 +2,9 @@ import type Database from "better-sqlite3";
 import type { Run } from "../../domain/types.ts";
 import { asRecord, asRecords } from "./repository-utils.ts";
 
-export interface CreateRunInput extends Omit<Run, "completedAt"> {
-  completedAt?: string | null;
+export interface CreateRunInput extends Omit<Run, "completedAt" | "status"> {
+  status: "running";
+  completedAt?: null;
 }
 
 interface RunRow {
@@ -32,8 +33,7 @@ export function createRunRepository(db: Database.Database) {
     createRun(input: CreateRunInput): Run {
       const run: Run = {
         ...input,
-        completedAt: input.completedAt
-          ?? (input.status === "running" ? null : new Date().toISOString()),
+        completedAt: null,
       };
       db.prepare(`
         INSERT INTO runs (
@@ -62,13 +62,36 @@ export function createRunRepository(db: Database.Database) {
     },
     updateRunStatus(
       id: string,
-      status: Run["status"],
+      status: "failed" | "interrupted",
       completedAt: string | null = null,
     ): Run {
       const result = db.prepare(`
         UPDATE runs SET status = ?, completed_at = ? WHERE id = ?
-      `).run(status, status === "running" ? null : completedAt ?? new Date().toISOString(), id);
+      `).run(status, completedAt ?? new Date().toISOString(), id);
       if (result.changes === 0) throw new Error(`Run not found: ${id}`);
+      return getRun(id)!;
+    },
+    completeRun(id: string, completedAt: string): Run {
+      const complete = db.transaction((runId: string, at: string) => {
+        const row = db.prepare(`
+          SELECT runs.id, runs.task_id AS taskId, runs.status, tasks.group_id AS groupId
+          FROM runs JOIN tasks ON tasks.id = runs.task_id
+          WHERE runs.id = ?
+        `).get(runId) as {
+          id: string;
+          taskId: string;
+          status: Run["status"];
+          groupId: string;
+        } | undefined;
+        if (!row) throw new Error(`Run not found: ${runId}`);
+        if (row.status !== "running") {
+          throw new Error(`Run is not running and cannot be completed: ${runId}`);
+        }
+        db.prepare(`
+          UPDATE runs SET status = 'completed', completed_at = ? WHERE id = ?
+        `).run(at, runId);
+      });
+      complete(id, completedAt);
       return getRun(id)!;
     },
   };

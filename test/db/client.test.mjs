@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   createDatabaseLifecycle,
@@ -15,7 +17,10 @@ test("database lifecycle defers opening until start and closes on stop", async (
   assert.ok(startResult instanceof Promise);
   await startResult;
   const db = lifecycle.getDatabase();
-  assert.equal(db.prepare("SELECT version FROM schema_migrations").get().version, 1);
+  assert.equal(
+    db.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").get().version,
+    2,
+  );
 
   await lifecycle.stop();
   assert.equal(db.open, false);
@@ -29,11 +34,91 @@ test("openDatabase enables foreign keys and migrations are repeatable", (t) => {
   migrate(db);
   migrate(db);
   assert.equal(db.pragma("foreign_keys", { simple: true }), 1);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count, 1);
+  assert.deepEqual(
+    db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
+      .map(({ version }) => version),
+    [1, 2],
+  );
+});
+
+test("upgrades version-one ownership and run data into version-two boundaries", async (t) => {
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  db.pragma("foreign_keys = ON");
+  db.exec(readFileSync(
+    new URL("../../src/server/db/migrations/001_initial.sql", import.meta.url),
+    "utf8",
+  ));
+  db.exec(`
+    INSERT INTO agents (id, model_provider, model_id) VALUES ('agent-1', 'test', 'model');
+    INSERT INTO contacts (id, agent_id, name) VALUES ('contact-1', 'agent-1', 'Builder');
+    INSERT INTO projects (id, name, root_path) VALUES ('project-1', 'AChat', '/workspace');
+    INSERT INTO groups (id, name) VALUES ('group-1', 'Planning');
+    INSERT INTO tasks (id, group_id, project_id, description, status)
+      VALUES ('task-1', 'group-1', 'project-1', 'Build', 'open');
+    INSERT INTO work_items (id, task_id, contact_id, title, status)
+      VALUES ('item-1', 'task-1', 'contact-1', 'Build', 'complete');
+    INSERT INTO runs (
+      id, task_id, work_item_id, contact_id, attempt, status, started_at, completed_at
+    ) VALUES (
+      'run-1', 'task-1', 'item-1', 'contact-1', 1, 'completed',
+      '2026-10-15T10:00:00.000Z', '2026-10-15T10:01:00.000Z'
+    );
+    INSERT INTO conversations (id, kind) VALUES ('private-1', 'private');
+    INSERT INTO pi_session_mappings (
+      id, contact_id, task_id, conversation_id, kind, pi_session_id, session_file
+    ) VALUES (
+      'mapping-1', 'contact-1', NULL, 'private-1', 'private',
+      'session-1', '/sessions/session-1.jsonl'
+    );
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    INSERT INTO schema_migrations (version) VALUES (1);
+  `);
+
+  const { migrate } = await import("../../src/server/db/client.ts");
+  migrate(db);
+  migrate(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
+      .map(({ version }) => version),
+    [1, 2],
+  );
+  assert.equal(
+    db.prepare("SELECT contact_id AS contactId FROM conversations WHERE id = 'private-1'").get().contactId,
+    "contact-1",
+  );
+  assert.deepEqual(
+    db.prepare(`
+      SELECT run_id AS runId, task_id AS taskId, group_id AS groupId, completed_at AS completedAt
+      FROM run_completions
+    `).get(),
+    {
+      runId: "run-1",
+      taskId: "task-1",
+      groupId: "group-1",
+      completedAt: "2026-10-15T10:01:00.000Z",
+    },
+  );
 });
 
 test("database module imports without opening a database", async () => {
-  const clientModule = await import("../../src/server/db/client.ts");
-  assert.equal(typeof clientModule.createDatabaseLifecycle, "function");
-  assert.ok(Database);
+  const dataDir = path.join(process.cwd(), "test", "db", `.import-side-effect-${process.pid}`);
+  assert.equal(existsSync(dataDir), false);
+  const previousDataDir = process.env.ACHAT_DATA_DIR;
+  process.env.ACHAT_DATA_DIR = dataDir;
+  try {
+    const clientModule = await import(
+      `../../src/server/db/client.ts?no-import-io=${process.pid}`
+    );
+    assert.equal(typeof clientModule.createDatabaseLifecycle, "function");
+    assert.ok(Database);
+    assert.equal(existsSync(dataDir), false);
+  } finally {
+    if (previousDataDir === undefined) delete process.env.ACHAT_DATA_DIR;
+    else process.env.ACHAT_DATA_DIR = previousDataDir;
+  }
 });

@@ -5,10 +5,94 @@ import Database from "better-sqlite3";
 import type { AppRuntimeLifecycle } from "../app-runtime.ts";
 import { resolveDataDir } from "../app-runtime.ts";
 
-const initialMigrationPath = fileURLToPath(
-  new URL("./migrations/001_initial.sql", import.meta.url),
-);
-const initialMigrationVersion = 1;
+const migrationFiles = [
+  {
+    version: 1,
+    path: fileURLToPath(new URL("./migrations/001_initial.sql", import.meta.url)),
+  },
+  {
+    version: 2,
+    path: fileURLToPath(new URL("./migrations/002_contact_unread_boundaries.sql", import.meta.url)),
+  },
+];
+const latestMigrationVersion = migrationFiles.at(-1)!.version;
+
+function assertVersionOneDataCanUpgrade(db: Database.Database): void {
+  const unownedPrivateConversation = db.prepare(`
+    SELECT conversations.id
+    FROM conversations
+    LEFT JOIN pi_session_mappings
+      ON pi_session_mappings.conversation_id = conversations.id
+     AND pi_session_mappings.kind = 'private'
+    WHERE conversations.kind = 'private'
+    GROUP BY conversations.id
+    HAVING COUNT(DISTINCT pi_session_mappings.contact_id) != 1
+    LIMIT 1
+  `).get();
+  if (unownedPrivateConversation) {
+    throw new Error(
+      "Cannot migrate an unowned or ambiguously owned private conversation; assign one contact owner first",
+    );
+  }
+
+  const nonMemberSession = db.prepare(`
+    SELECT pi_session_mappings.id
+    FROM pi_session_mappings
+    LEFT JOIN task_members
+      ON task_members.task_id = pi_session_mappings.task_id
+     AND task_members.contact_id = pi_session_mappings.contact_id
+    WHERE pi_session_mappings.kind = 'task'
+      AND task_members.contact_id IS NULL
+    LIMIT 1
+  `).get();
+  if (nonMemberSession) {
+    throw new Error(
+      "Cannot migrate a task-session mapping whose contact is not a task member",
+    );
+  }
+
+  const duplicateTaskSession = db.prepare(`
+    SELECT task_id, contact_id
+    FROM pi_session_mappings
+    WHERE task_id IS NOT NULL
+    GROUP BY task_id, contact_id
+    HAVING COUNT(*) > 1
+    LIMIT 1
+  `).get();
+  if (duplicateTaskSession) {
+    throw new Error("Cannot migrate duplicate task-session mappings for one contact");
+  }
+
+  const mismatchedRun = db.prepare(`
+    SELECT runs.id
+    FROM runs JOIN work_items
+      ON work_items.id = runs.work_item_id
+     AND work_items.task_id = runs.task_id
+    WHERE work_items.contact_id != runs.contact_id
+    LIMIT 1
+  `).get();
+  if (mismatchedRun) {
+    throw new Error("Cannot migrate a run whose contact differs from its work item");
+  }
+
+  const mismatchedApproval = db.prepare(`
+    SELECT approvals.id
+    FROM approvals
+    JOIN work_items
+      ON work_items.id = approvals.work_item_id
+     AND work_items.task_id = approvals.task_id
+    JOIN pi_session_mappings
+      ON pi_session_mappings.pi_session_id = approvals.pi_session_id
+     AND pi_session_mappings.task_id = approvals.task_id
+    WHERE work_items.contact_id != pi_session_mappings.contact_id
+    LIMIT 1
+  `).get();
+  if (mismatchedApproval) {
+    throw new Error(
+      "Cannot migrate an approval whose work item and Pi session belong to different contacts",
+    );
+  }
+}
 
 export function openDatabase(databasePath: string): Database.Database {
   if (databasePath !== ":memory:" && !databasePath.startsWith("file:")) {
@@ -27,20 +111,25 @@ export function migrate(db: Database.Database): void {
       applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     )
   `);
-  const migrations = db.prepare(
+  const latestAppliedMigration = db.prepare(
     "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1",
   ).get() as { version: number } | undefined;
-  const currentVersion = migrations?.version ?? 0;
-  if (currentVersion > initialMigrationVersion) {
+  let currentVersion = latestAppliedMigration?.version ?? 0;
+  if (currentVersion > latestMigrationVersion) {
     throw new Error(`Database schema version ${currentVersion} is newer than supported`);
   }
-  if (currentVersion < initialMigrationVersion) {
-    const sql = readFileSync(initialMigrationPath, "utf8");
+  for (const migration of migrationFiles) {
+    if (migration.version <= currentVersion) continue;
+    if (migration.version === 2 && currentVersion === 1) {
+      assertVersionOneDataCanUpgrade(db);
+    }
+    const sql = readFileSync(migration.path, "utf8");
     db.transaction(() => {
       db.exec(sql);
       db.prepare("INSERT INTO schema_migrations (version) VALUES (?)")
-        .run(initialMigrationVersion);
+        .run(migration.version);
     })();
+    currentVersion = migration.version;
   }
 }
 
