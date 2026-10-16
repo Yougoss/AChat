@@ -9,8 +9,15 @@ export type TraceScope = Pick<
 >;
 
 const sensitiveKey = /authorization|(^|[_-])auth($|[_-])|cookie|api[-_]?key|token|password|secret|credential|headers/i;
+const bearerCredential = /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi;
+const queryCredential = /([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|credential|password|token|secret|auth|key)=)[^&#\s]*/gi;
 
 function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") {
+    return value
+      .replace(bearerCredential, "Bearer [REDACTED]")
+      .replace(queryCredential, "$1[REDACTED]");
+  }
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   seen.add(value);

@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import test from "node:test";
 import { createSessionFactory } from "../../src/server/pi/session-factory.ts";
-import { createTestDatabase, seedProject, seedGroupTask } from "../db/helpers.mjs";
+import { createTestDatabase, seedContact, seedProject, seedGroupTask } from "../db/helpers.mjs";
 import { createGroupTaskRepository } from "../../src/server/db/repositories/group-task-repository.ts";
 import { createAgentRepository } from "../../src/server/db/repositories/agent-repository.ts";
+import { createTraceQueryService } from "../../src/server/services/trace-query-service.ts";
+import { createQueryContactSessionsTool } from "../../src/server/pi/tools/query-contact-sessions.ts";
 
 function seedCopilotContact(db) {
   return createAgentRepository(db).createContact({
@@ -117,4 +119,20 @@ test("contact query reads do not invoke task-session controls or mutate task/run
   assert.deepEqual(db.prepare("SELECT id, status FROM tasks UNION ALL SELECT id, status FROM runs").all(), before);
   assert.deepEqual(taskSessionCalls, []);
   assert.deepEqual(toolExecutionCalls, []);
+});
+
+test("task-filtered session listing reports authorization errors through the tool action", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  seedProject(db);
+  seedContact(db, "contact-1");
+  seedContact(db, "contact-2");
+  const { task } = seedGroupTask(db);
+  createGroupTaskRepository(db).addTaskMember(task.id, "contact-1");
+
+  const tool = createQueryContactSessionsTool("contact-2", createTraceQueryService(db));
+  await assert.rejects(
+    tool.execute("tool-call", { action: "list_sessions", taskId: task.id }),
+    /not authorized/i,
+  );
 });

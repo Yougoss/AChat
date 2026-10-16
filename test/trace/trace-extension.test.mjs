@@ -102,3 +102,34 @@ test("excludes auth headers and credential-shaped fields from persisted provider
   assert.doesNotMatch(stored, /authorization|x-api-key|synthetic-secret-do-not-store/i);
   assert.match(stored, /synthetic input/);
 });
+
+test("redacts bearer credentials in innocuously named string values", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  const scope = seedPrivateSession(db);
+  const trace = createTraceExtension(db);
+
+  await trace.recordProviderRequest(scope, "call-value-secrets", {
+    note: `Forwarded authorization: ${["Bear", "er fake-bearer-token-never-use"].join("")}`,
+  });
+
+  const stored = db.prepare("SELECT payload_json FROM trace_records").all()
+    .map(({ payload_json }) => payload_json).join("\n");
+  assert.doesNotMatch(stored, /fake-bearer-token-never-use/);
+});
+
+test("redacts URL query credentials in innocuously named string values", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  const scope = seedPrivateSession(db);
+  const trace = createTraceExtension(db);
+
+  await trace.recordProviderRequest(scope, "call-query-secrets", {
+    endpoint: "https://provider.invalid/chat?api_key=fake-query-credential-never-use&mode=chat",
+  });
+
+  const stored = db.prepare("SELECT payload_json FROM trace_records").all()
+    .map(({ payload_json }) => payload_json).join("\n");
+  assert.doesNotMatch(stored, /fake-query-credential-never-use/);
+  assert.match(stored, /mode=chat/);
+});

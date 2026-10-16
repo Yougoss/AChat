@@ -83,6 +83,19 @@ export function createTraceQueryService(db: Database.Database) {
     ): Promise<{ items: ContactSessionSummary[]; nextCursor: string | null }> {
       const limit = pageLimit(options.limit);
       const cursor = decodeCursor(options.cursor);
+      if (options.taskId !== undefined) {
+        const membership = db.prepare(`
+          SELECT 1 AS member
+          FROM task_members
+          WHERE task_id = ? AND contact_id = ?
+        `).get(options.taskId, contactId);
+        if (!membership) {
+          const exists = db.prepare("SELECT 1 AS found FROM tasks WHERE id = ?").get(options.taskId);
+          throw new Error(exists
+            ? `Contact ${contactId} is not authorized to read task ${options.taskId}`
+            : `Task not found: ${options.taskId}`);
+        }
+      }
       const rows = db.prepare(`
         SELECT mapping.pi_session_id AS sessionRef,
                mapping.kind,
