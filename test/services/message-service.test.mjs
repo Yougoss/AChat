@@ -3,6 +3,8 @@ import test from "node:test";
 import { createTestDatabase, seedContact } from "../db/helpers.mjs";
 import { createContactMessageService } from "../../src/server/services/message-service.ts";
 import { createMessageRepository } from "../../src/server/db/repositories/message-repository.ts";
+import { createSessionRepository } from "../../src/server/db/repositories/session-repository.ts";
+import { createTraceExtension } from "../../src/server/pi/trace-extension.ts";
 
 test("persists a contact exchange and invokes only that contact's contact-chat session", async (t) => {
   const db = createTestDatabase();
@@ -73,4 +75,122 @@ test("rejects blank contact messages before opening a Pi session", async (t) => 
   await assert.rejects(service.sendContactMessage("contact-1", { content: "  " }), /message cannot be empty/i);
   assert.equal(openedSession, false);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM messages").get().count, 0);
+});
+
+test("persists the exact trace sequence range emitted by the prompt for its assistant reply", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  seedContact(db);
+  const messages = createMessageRepository(db);
+  const conversation = messages.createConversation({
+    id: "private-conversation",
+    groupId: null,
+    taskId: null,
+    contactId: "contact-1",
+    kind: "private",
+  });
+  const mapping = createSessionRepository(db).createSessionMapping({
+    id: "private-mapping",
+    contactId: "contact-1",
+    taskId: null,
+    conversationId: conversation.id,
+    kind: "private",
+    piSessionId: "pi-private",
+    sessionFile: "sessions/contact-1/private.jsonl",
+  });
+  const trace = createTraceExtension(db);
+  await trace.recordSessionEvent(mapping, {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: "The same answer",
+      usage: { input: 900, output: 700 },
+    },
+  });
+  const afterSequence = db.prepare("SELECT MAX(sequence) AS value FROM trace_records").get().value;
+  const session = {
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "The same answer" }],
+    }],
+    async prompt(content) {
+      assert.equal(content, "Question?");
+      await trace.recordSessionEvent(mapping, {
+        type: "message_start",
+        message: { role: "user", content: [{ type: "text", text: content }] },
+      });
+      session.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "The same answer" }],
+      });
+      await trace.recordSessionEvent(mapping, {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          model: "current-model",
+          content: [{ type: "text", text: "The same answer" }],
+          usage: { input: 3, output: 2 },
+        },
+      });
+    },
+  };
+  const service = createContactMessageService(db, {
+    createContactSession: async () => session,
+    idFactory: (() => {
+      const ids = ["user-message", "assistant-message"];
+      return () => ids.shift();
+    })(),
+  });
+
+  const exchange = await service.sendContactMessage("contact-1", { content: "Question?" });
+  const throughSequence = db.prepare("SELECT MAX(sequence) AS value FROM trace_records").get().value;
+
+  assert.deepEqual(exchange.assistantMessage.metadata.processTraceRange, {
+    afterSequence,
+    throughSequence,
+  });
+});
+
+test("persists an empty trace range when a mapped private prompt emits no trace records", async (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  seedContact(db);
+  const conversation = createMessageRepository(db).createConversation({
+    id: "private-conversation",
+    groupId: null,
+    taskId: null,
+    contactId: "contact-1",
+    kind: "private",
+  });
+  createSessionRepository(db).createSessionMapping({
+    id: "private-mapping",
+    contactId: "contact-1",
+    taskId: null,
+    conversationId: conversation.id,
+    kind: "private",
+    piSessionId: "pi-private",
+    sessionFile: "sessions/contact-1/private.jsonl",
+  });
+  const service = createContactMessageService(db, {
+    createContactSession: async () => {
+      const session = {
+        messages: [],
+        async prompt() {
+          session.messages.push({ role: "assistant", content: "No trace available" });
+        },
+      };
+      return session;
+    },
+    idFactory: (() => {
+      const ids = ["user-message", "assistant-message"];
+      return () => ids.shift();
+    })(),
+  });
+
+  const exchange = await service.sendContactMessage("contact-1", { content: "Question?" });
+
+  assert.deepEqual(exchange.assistantMessage.metadata.processTraceRange, {
+    afterSequence: 0,
+    throughSequence: 0,
+  });
 });

@@ -52,6 +52,31 @@ function privateConversationId(
   }).id;
 }
 
+function traceBoundary(
+  db: Database.Database,
+  contactId: string,
+  conversationId: string,
+): { mappingId: string; afterSequence: number } | undefined {
+  const mapping = db.prepare(`
+    SELECT id FROM pi_session_mappings
+    WHERE contact_id = ? AND conversation_id = ? AND kind = 'private' AND task_id IS NULL
+  `).get(contactId, conversationId) as { id: string } | undefined;
+  if (!mapping) return undefined;
+  const row = db.prepare(`
+    SELECT COALESCE(MAX(sequence), 0) AS sequence
+    FROM trace_records WHERE mapping_id = ?
+  `).get(mapping.id) as { sequence: number };
+  return { mappingId: mapping.id, afterSequence: row.sequence };
+}
+
+function traceSequence(db: Database.Database, mappingId: string): number {
+  const row = db.prepare(`
+    SELECT COALESCE(MAX(sequence), 0) AS sequence
+    FROM trace_records WHERE mapping_id = ?
+  `).get(mappingId) as { sequence: number };
+  return row.sequence;
+}
+
 export function createContactMessageService(
   db: Database.Database,
   options: MessageServiceOptions = {},
@@ -71,6 +96,7 @@ export function createContactMessageService(
       const session = await openSession(contactId, { sessionKind: "contact_chat" });
       const previousMessageCount = session.messages.length;
       const conversationId = privateConversationId(db, contactId, idFactory);
+      const traceStart = traceBoundary(db, contactId, conversationId);
       const userMessage = messages.appendMessage({
         id: idFactory(),
         conversationId,
@@ -86,11 +112,24 @@ export function createContactMessageService(
       if (!response.trim()) {
         throw new Error("Contact session did not return an assistant message");
       }
+      const throughSequence = traceStart
+        ? traceSequence(db, traceStart.mappingId)
+        : undefined;
       const assistantMessage = messages.appendMessage({
         id: idFactory(),
         conversationId,
         role: "assistant",
         content: response,
+        ...(traceStart && throughSequence !== undefined
+          ? {
+              metadata: {
+                processTraceRange: {
+                  afterSequence: traceStart.afterSequence,
+                  throughSequence,
+                },
+              },
+            }
+          : {}),
         createdAt: now(),
       });
       return { userMessage, assistantMessage };

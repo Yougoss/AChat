@@ -2,6 +2,7 @@ import {
   listContactMessages,
   sendContactMessage,
 } from "../../../../../server/services/message-service.ts";
+import { listContactMessageProcessSummaries } from "../../../../../server/services/process-details-service.ts";
 import { getContact } from "../../../../../server/services/contact-service.ts";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,12 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
   const { contactId } = await params;
   try {
     await getContact(contactId);
-    return Response.json({ messages: await listContactMessages(contactId) });
+    const messages = await listContactMessages(contactId);
+    const processSummaries = await listContactMessageProcessSummaries(
+      contactId,
+      messages.filter(({ role }) => role === "assistant").map(({ id }) => id),
+    );
+    return Response.json({ messages, processSummaries });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load conversation";
     return Response.json({ error: message }, {
@@ -40,8 +46,14 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
     return Response.json({ error: "content must be a string" }, { status: 400 });
   }
   try {
+    const exchange = await sendContactMessage(contactId, { content: body.content });
+    const processSummaries = await listContactMessageProcessSummaries(
+      contactId,
+      [exchange.assistantMessage.id],
+    );
     return Response.json({
-      exchange: await sendContactMessage(contactId, { content: body.content }),
+      exchange,
+      processSummaries,
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to send contact message";

@@ -5,6 +5,7 @@ import { createUnreadRepository } from "../../../../../server/db/repositories/un
 import { createAttentionRepository } from "../../../../../server/db/repositories/attention-repository.ts";
 import { createApprovalService } from "../../../../../server/services/approval-service.ts";
 import { createTaskStatusService } from "../../../../../server/services/task-status-service.ts";
+import { createProcessDetailsService } from "../../../../../server/services/process-details-service.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,7 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
     return Response.json({
       messages,
       runs: visibleRuns,
+      processSummaries: createProcessDetailsService(db).listGroupRunProcessSummaries(groupId),
       taskStatus: task.status,
       unreadCount: createUnreadRepository(db).countUnreadRuns(groupId),
       pendingAttentionCount,

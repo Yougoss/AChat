@@ -12,7 +12,7 @@ const sensitiveKey = /authorization|(^|[_-])auth($|[_-])|cookie|api[-_]?key|toke
 const bearerCredential = /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi;
 const queryCredential = /([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|credential|password|token|secret|auth|key)=)[^&#\s]*/gi;
 
-function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
+export function sanitizeTraceValue(value: unknown, seen = new WeakSet<object>()): unknown {
   if (typeof value === "string") {
     return value
       .replace(bearerCredential, "Bearer [REDACTED]")
@@ -22,21 +22,21 @@ function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
   if (Array.isArray(value)) {
-    const sanitized = value.map((item) => sanitize(item, seen));
+    const sanitized = value.map((item) => sanitizeTraceValue(item, seen));
     seen.delete(value);
     return sanitized;
   }
   const sanitized: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     if (sensitiveKey.test(key)) continue;
-    sanitized[key] = sanitize(item, seen);
+    sanitized[key] = sanitizeTraceValue(item, seen);
   }
   seen.delete(value);
   return sanitized;
 }
 
 function serialize(value: unknown): string {
-  const json = JSON.stringify(sanitize(value));
+  const json = JSON.stringify(sanitizeTraceValue(value));
   return json === undefined ? "null" : json;
 }
 
