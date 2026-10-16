@@ -39,17 +39,20 @@
 - Create: `src/app/api/groups/[groupId]/runs/[runId]/process/route.ts`
 - Modify: `src/app/api/contacts/[contactId]/messages/route.ts`
 - Modify: `src/app/api/groups/[groupId]/messages/route.ts`
+- Modify: `src/server/services/message-service.ts`
 - Test: `test/services/process-details-service.test.mjs`
+- Test: `test/services/message-service.test.mjs`
 - Test: `test/api/process-details-routes.test.mjs`
 
 **Interfaces:**
 - Produce `ProcessSummary`: assistant `messageCount`, `models`, and optional usage totals (`input`, `output`, `cacheRead`, `cacheWrite`, `cost`).
 - Produce `ProcessEvent`: stable `id`, `createdAt`, `kind`, display `label`, safe `detail`, and optional `model`/`durationMs`.
 - Produce `ProcessDetails`: `{ summary: ProcessSummary; events: ProcessEvent[] }`.
+- Persist `metadata.processTraceRange = { afterSequence: number; throughSequence: number }` on each private assistant message from the trace records emitted for that exact prompt.
 - Existing contact/group message responses add process summaries keyed by assistant message ID or run ID. The two new GET detail routes return `ProcessDetails`.
-- Consume existing `pi_session_mappings`, append-only `trace_records`, run `events`, message metadata, and current trace sanitizer. Associate task records by persisted run ID and call ID; associate private assistant records only within the contact's private mapping and matching assistant message.
+- Consume existing `pi_session_mappings`, append-only `trace_records`, run `events`, message metadata, and current trace sanitizer. Associate task records by persisted run ID and call ID; associate private assistant records by the persisted sequence range within the contact's private mapping, never by text-only matching.
 
-- [ ] **Step 1: Write failing service tests** for task-run event ordering and usage aggregation, private contact/message scoping, absent/partial usage, and long/sensitive output sanitization.
+- [ ] **Step 1: Write failing service tests** for task-run event ordering and usage aggregation, exact private trace-range linkage (including identical reply text), absent/partial usage, and long/sensitive output sanitization.
 - [ ] **Step 2: Run the service test file** with `node --test test/services/process-details-service.test.mjs`; verify failures identify the missing service/behavior.
 - [ ] **Step 3: Implement the scoped process projection** in `process-details-service.ts`, using sanitized trace payloads and visible run events only.
 - [ ] **Step 4: Write failing route tests** for valid task/contact detail responses, unknown IDs, and cross-task/cross-contact access.

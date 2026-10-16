@@ -22,6 +22,7 @@ Give AChat a familiar, conversation-first workspace for a person coordinating AI
 - The collapsed card header shows `Process details`, the visible assistant-message count, and the model or models when known. Show available usage totals for input, output, cache read/write, and cost using Pi's captured usage; do not invent zeroes or sample values.
 - Expanding the card shows user-visible input/context, assistant messages, tool calls and their sanitized results, and relevant failures, in chronological order. It must be detailed enough to inspect what happened; long tool output may be collapsed within its event row.
 - Aggregate usage across assistant messages belonging to the same task run or private assistant response. Show duration only when the source provides it. Omit unavailable usage fields; if no usage was captured, show an explicit unavailable state rather than fabricated metrics.
+- Associate private process details with the exact assistant reply using a persisted trace-sequence range captured around that prompt; do not correlate replies by matching text alone. Associate task details using the durable run ID and Pi call IDs.
 - Do not expose model reasoning/thinking blocks, raw provider requests/responses, credentials, or content outside the contact/task scope. Use the existing trace sanitization and keep process queries constrained to the contact or task/run mapping.
 - The process card is collapsed by default to preserve the chat rhythm. The approved mockup displayed it expanded only to review its contents.
 
