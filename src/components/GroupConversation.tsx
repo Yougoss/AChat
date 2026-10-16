@@ -13,6 +13,7 @@ interface ContactLabel {
 }
 
 interface VisibleRun extends Run {
+  workItemStatus: string;
   contactName: string;
   title: string;
   stuck: "stuck" | "not_stuck" | "unknown";
@@ -251,10 +252,12 @@ export function GroupConversation({
       </section>
       <div className="group-status-column">
         <TaskStatusPanel
+          taskId={task.id}
           taskStatus={taskStatus}
           runs={runs}
           unreadCount={unreadCount}
           pendingAttentionCount={pendingAttentionCount}
+          onRetryComplete={refresh}
         />
         <RunProcessView runs={runs} />
       </div>

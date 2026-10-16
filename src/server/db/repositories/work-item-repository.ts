@@ -66,7 +66,7 @@ export function createWorkItemRepository(db: Database.Database) {
                handoff_depth AS handoffDepth, source_message_id AS sourceMessageId,
                created_at AS createdAt, updated_at AS updatedAt
         FROM work_items WHERE task_id = ? ORDER BY created_at, id
-      `).all()).map((row) => ({ ...row }));
+      `).all(taskId)).map((row) => ({ ...row }));
     },
     updateWorkItemStatus(id: string, status: string, updatedAt = new Date().toISOString()): WorkItem {
       const result = db.prepare(`

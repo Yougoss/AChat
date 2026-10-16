@@ -1,8 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import { UnreadBadge } from "./UnreadBadge.tsx";
 
 interface TaskRunStatus {
   id: string;
   status: string;
+  workItemStatus: string;
   contactName: string;
   title: string;
   stuck: "stuck" | "not_stuck" | "unknown";
@@ -10,10 +14,12 @@ interface TaskRunStatus {
 }
 
 interface TaskStatusPanelProps {
+  taskId: string;
   taskStatus: string;
   runs: TaskRunStatus[];
   unreadCount: number;
   pendingAttentionCount: number;
+  onRetryComplete?: () => Promise<void> | void;
 }
 
 function stuckLabel(state: TaskRunStatus["stuck"]): string {
@@ -23,11 +29,37 @@ function stuckLabel(state: TaskRunStatus["stuck"]): string {
 }
 
 export function TaskStatusPanel({
+  taskId,
   taskStatus,
   runs,
   unreadCount,
   pendingAttentionCount,
+  onRetryComplete,
 }: TaskStatusPanelProps) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+
+  async function retryInterrupted() {
+    setRetrying(true);
+    setRetryError("");
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error ?? "Unable to retry interrupted work");
+      }
+      await onRetryComplete?.();
+    } catch (error) {
+      setRetryError(error instanceof Error ? error.message : "Unable to retry interrupted work");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   return (
     <section className="task-status-panel" aria-labelledby="task-status-title">
       <div className="section-heading">
@@ -69,6 +101,22 @@ export function TaskStatusPanel({
           ))}
         </ul>
       )}
+      {runs.some((run) => run.workItemStatus === "interrupted") ? (
+        <div className="task-retry">
+          <p className="evidence-meta">
+            Retry starts a new run in the task’s existing Pi session; prior run evidence is kept.
+          </p>
+          <button
+            className="button button-quiet"
+            type="button"
+            onClick={() => void retryInterrupted()}
+            disabled={retrying}
+          >
+            {retrying ? "Retrying interrupted work…" : "Retry interrupted work"}
+          </button>
+          {retryError ? <p className="form-error" role="alert">{retryError}</p> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

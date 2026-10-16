@@ -15,7 +15,7 @@ const dataDir = path.join(
   "task-7-e2e-data",
 );
 
-test("live completion updates execution and unread independently, and group read persists", async ({ page }) => {
+test("startup recovery is visible and a later completion updates unread independently", async ({ page }) => {
   await page.route("**/api/contacts", (route) => route.fulfill({
     json: {
       contacts: [{
@@ -32,33 +32,72 @@ test("live completion updates execution and unread independently, and group read
 
   await expect(page.getByRole("heading", { name: "Status test group" })).toBeVisible();
   await expect(page.getByText("Live activity connected")).toBeVisible();
-  await expect(page.getByText("Running", { exact: true })).toBeVisible();
+  await expect(page.getByText("Idle", { exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Run status" })
+    .getByText("interrupted", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry interrupted work" })).toBeVisible();
   await expect(page.getByLabel("No unread runs")).toBeVisible();
 
   const db = new Database(path.join(dataDir, "achat.sqlite"));
   try {
-    createRunRepository(db).completeRun("run-1", "2026-10-16T02:01:00.000Z");
     createWorkItemRepository(db).updateWorkItemStatus(
       "work-item-1",
-      "completed",
-      "2026-10-16T02:01:00.000Z",
+      "running",
+      "2026-10-16T02:00:30.000Z",
     );
+    createRunRepository(db).createRun({
+      id: "run-2",
+      taskId: "task-1",
+      workItemId: "work-item-1",
+      contactId: "contact-1",
+      attempt: 2,
+      status: "running",
+      startedAt: "2026-10-16T02:00:30.000Z",
+    });
     createEventRepository(db).appendEvent({
-      id: "run-1-completed",
+      id: "run-2-started",
       entityType: "run",
-      entityId: "run-1",
-      type: "run.completed",
+      entityId: "run-2",
+      type: "run.started",
       payload: {
-        runId: "run-1",
+        runId: "run-2",
         taskId: "task-1",
         workItemId: "work-item-1",
         contactId: "contact-1",
       },
-      idempotencyKey: "run-1-completed",
-      createdAt: "2026-10-16T02:01:00.000Z",
+      idempotencyKey: "run-2-started",
+      createdAt: "2026-10-16T02:00:30.000Z",
     });
   } finally {
     db.close();
+  }
+
+  await expect(page.getByText("Running", { exact: true })).toBeVisible();
+
+  const completionDb = new Database(path.join(dataDir, "achat.sqlite"));
+  try {
+    createRunRepository(completionDb).completeRun("run-2", "2026-10-16T02:01:00.000Z");
+    createWorkItemRepository(completionDb).updateWorkItemStatus(
+      "work-item-1",
+      "completed",
+      "2026-10-16T02:01:00.000Z",
+    );
+    createEventRepository(completionDb).appendEvent({
+      id: "run-2-completed",
+      entityType: "run",
+      entityId: "run-2",
+      type: "run.completed",
+      payload: {
+        runId: "run-2",
+        taskId: "task-1",
+        workItemId: "work-item-1",
+        contactId: "contact-1",
+      },
+      idempotencyKey: "run-2-completed",
+      createdAt: "2026-10-16T02:01:00.000Z",
+    });
+  } finally {
+    completionDb.close();
   }
 
   await expect(page.getByLabel("1 unread runs")).toBeVisible();
