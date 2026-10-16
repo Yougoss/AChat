@@ -22,6 +22,10 @@ const migrationFiles = [
     version: 4,
     path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/004_trace_capture.sql"),
   },
+  {
+    version: 5,
+    path: path.join(path.dirname(fileURLToPath(import.meta.url)), "migrations/005_task_execution.sql"),
+  },
 ];
 const latestMigrationVersion = migrationFiles.at(-1)!.version;
 

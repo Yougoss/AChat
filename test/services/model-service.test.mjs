@@ -160,7 +160,8 @@ test("task sessions use their project cwd and never receive contact-chat tools",
     await factory.createContactSession(contact.id, { taskId: task.id, sessionKind: "task" });
     assert.equal(created[0].cwd, project.rootPath);
     assert.equal(created[0].tools.includes("query_contact_sessions"), false);
-    assert.equal(created[0].customTools?.length ?? 0, 0);
+    assert.deepEqual(created[0].customTools?.map((tool) => tool.name), ["delegate_to_member"]);
+    assert.equal(created[0].customTools?.some((tool) => tool.name === "query_contact_sessions"), false);
     const mapping = db.prepare(`
       SELECT contact_id AS contactId, task_id AS taskId, kind
       FROM pi_session_mappings

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
-import type { Contact, Message, Project } from "../server/domain/types.ts";
+import type { Contact, Group, Message, Project } from "../server/domain/types.ts";
 import { ContactSessionResults } from "./ContactSessionResults.tsx";
 import { ProjectSelector } from "./ProjectSelector.tsx";
 
@@ -60,6 +60,7 @@ function ContactChatSession({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [createdGroup, setCreatedGroup] = useState<Group | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -180,10 +181,11 @@ function ContactChatSession({
           contactIds: draft.contactIds,
         }),
       });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { group?: Group; error?: string };
       if (!mounted.current) return;
       if (!response.ok) throw new Error(result.error ?? "Unable to create group and task");
       setDraft(null);
+      setCreatedGroup(result.group ?? null);
       setNotice("Group and task created. No work was dispatched.");
     } catch (cause) {
       if (mounted.current) setError(readableError(cause, "Unable to create group and task"));
@@ -257,7 +259,14 @@ function ContactChatSession({
           </div>
         </form>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        {notice ? <p className="form-success" role="status">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}{" "}
+            {createdGroup ? (
+              <Link href={`/groups/${encodeURIComponent(createdGroup.id)}`}>Open group conversation</Link>
+            ) : null}
+          </p>
+        ) : null}
       </section>
 
       {draft ? (

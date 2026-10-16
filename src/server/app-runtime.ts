@@ -95,9 +95,9 @@ function createAppRuntimeController(
 }
 
 export function createAppRuntime(
-  lifecycle: AppRuntimeLifecycle = {},
+  lifecycle: AppRuntimeLifecycle | AppRuntimeLifecycle[] = {},
 ): AppRuntime {
-  return createAppRuntimeController([lifecycle]).runtime;
+  return createAppRuntimeController(Array.isArray(lifecycle) ? lifecycle : [lifecycle]).runtime;
 }
 
 let processRuntimeController: AppRuntimeController | undefined;

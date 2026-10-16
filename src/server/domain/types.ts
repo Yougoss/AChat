@@ -58,6 +58,7 @@ export interface Message {
   conversationId: string;
   role: string;
   content: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -67,6 +68,8 @@ export interface WorkItem {
   contactId: string;
   title: string;
   status: string;
+  handoffDepth: number;
+  sourceMessageId: string | null;
   createdAt: string;
   updatedAt: string;
 }

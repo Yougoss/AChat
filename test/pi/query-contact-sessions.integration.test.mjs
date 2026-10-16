@@ -66,7 +66,7 @@ test("registers the read-only contact query only for contact-chat sessions", asy
   const contactTools = sessions[1].customTools ?? [];
   const taskTools = sessions[0].customTools ?? [];
   assert.deepEqual(contactTools.map((tool) => tool.name), ["query_contact_sessions"]);
-  assert.deepEqual(taskTools, []);
+  assert.deepEqual(taskTools.map((tool) => tool.name), ["delegate_to_member"]);
   assert.equal(sessions[1].noTools, "all");
   assert.doesNotMatch(JSON.stringify(contactTools[0].parameters), /contactId|sessionFile|path/);
   assert.deepEqual(taskSessionCalls, []);

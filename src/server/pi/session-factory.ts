@@ -27,14 +27,20 @@ import { createSessionRepository } from "../db/repositories/session-repository.t
 import { createTraceExtension } from "./trace-extension.ts";
 import { createTraceQueryService } from "../services/trace-query-service.ts";
 import { createQueryContactSessionsTool } from "./tools/query-contact-sessions.ts";
+import { createDelegateToMemberTool } from "./tools/delegate-to-member.ts";
 import { getPiModelRuntime } from "./model-runtime.ts";
 import { createSessionRegistry, type SessionRegistry } from "./session-registry.ts";
+import { createHandoffService, type HandoffContext } from "../services/handoff-service.ts";
+import { enqueueCommittedWorkItem } from "../scheduler/work-scheduler.ts";
 
 export type SessionKind = "contact_chat" | "task";
 
 export interface CreateContactSessionOptions {
   taskId?: string;
   sessionKind: SessionKind;
+  workItemId?: string;
+  runId?: string;
+  handoffDepth?: number;
 }
 
 type SessionFactoryRuntime = Pick<ModelRuntime, "getAvailable">;
@@ -45,10 +51,21 @@ interface SessionFactoryDependencies {
   dataDir: string;
   agentDir?: string;
   sessionRegistry: SessionRegistry;
+  handoffService?: ReturnType<typeof createHandoffService>;
   createSession?: (
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
   createResourceLoader?: (options: ConstructorParameters<typeof DefaultResourceLoader>[0]) => ResourceLoader;
+}
+
+const activeTaskRunContexts = new Map<string, HandoffContext>();
+
+export function setTaskSessionRunContext(
+  piSessionId: string,
+  context: HandoffContext | undefined,
+): void {
+  if (context) activeTaskRunContexts.set(piSessionId, context);
+  else activeTaskRunContexts.delete(piSessionId);
 }
 
 const collaborationProtocol = [
@@ -132,6 +149,8 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
   const tasks = createGroupTaskRepository(dependencies.db);
   const sessionMappings = createSessionRepository(dependencies.db);
   const sessionRegistry = dependencies.sessionRegistry;
+  const handoffService = dependencies.handoffService
+    ?? createHandoffService(dependencies.db, { enqueueWorkItem: enqueueCommittedWorkItem });
   const agentDir = dependencies.agentDir ?? getAgentDir();
   const constructSession = dependencies.createSession ?? createAgentSession;
   const constructResourceLoader = dependencies.createResourceLoader
@@ -273,6 +292,13 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
     if (options.sessionKind === "contact_chat") {
       sessionOptions.customTools = [
         createQueryContactSessionsTool(contactId, createTraceQueryService(dependencies.db)),
+      ];
+    } else {
+      sessionOptions.customTools = [
+        createDelegateToMemberTool(
+          () => activeTaskRunContexts.get(mapping.piSessionId),
+          handoffService,
+        ),
       ];
     }
     let result: CreateAgentSessionResult;

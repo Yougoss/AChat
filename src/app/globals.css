@@ -100,6 +100,187 @@ h3 {
   min-height: 100dvh;
 }
 
+.group-workspace {
+  display: grid;
+  width: min(1500px, 100%);
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
+  align-items: start;
+  gap: 20px;
+  padding: clamp(18px, 3vw, 40px);
+}
+
+.group-conversation-panel,
+.run-process-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
+  padding: clamp(18px, 2.5vw, 30px);
+}
+
+.group-conversation-panel .conversation-header {
+  align-items: center;
+  padding-bottom: 18px;
+}
+
+.group-conversation-panel .conversation-header h1 {
+  margin-bottom: 8px;
+}
+
+.group-member-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.group-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--mineral-0);
+  padding: 5px 11px 5px 5px;
+  color: var(--ink-1);
+  font-size: 0.83rem;
+  font-weight: 650;
+}
+
+.group-member-chip .contact-avatar {
+  width: 25px;
+  height: 25px;
+  font-size: 0.72rem;
+}
+
+.group-message-list {
+  max-height: min(54vh, 680px);
+  overflow-y: auto;
+  padding: 18px 2px;
+}
+
+.group-message-heading,
+.run-card-heading,
+.run-metadata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.handoff-route {
+  color: var(--coral-0);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.message-handoff {
+  border-color: #e6b9aa;
+  background: var(--coral-1);
+}
+
+.message-handoff .message-role {
+  color: var(--ink-0);
+}
+
+.group-conversation-panel .message-composer {
+  margin-top: 4px;
+}
+
+.run-process-panel {
+  position: sticky;
+  top: 20px;
+}
+
+.run-process-panel .section-heading {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.run-process-panel .section-heading h2 {
+  margin-bottom: 0;
+}
+
+.run-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mineral-0);
+  padding: 13px;
+}
+
+.run-card p {
+  margin: 9px 0;
+  color: var(--ink-1);
+  font-size: 0.9rem;
+}
+
+.run-status {
+  border-radius: 999px;
+  background: var(--mineral-2);
+  padding: 3px 8px;
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.run-status-running {
+  background: var(--teal-1);
+  color: var(--teal-0);
+}
+
+.run-status-completed {
+  background: #e0eee5;
+  color: var(--success);
+}
+
+.run-status-failed,
+.run-status-interrupted {
+  background: var(--coral-1);
+  color: var(--danger);
+}
+
+.run-metadata {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+.run-event-list {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 0 0 18px;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+}
+
+.run-event-list li::marker {
+  color: var(--teal-0);
+}
+
+.run-empty {
+  border-left: 3px solid var(--coral-0);
+  color: var(--ink-2);
+  padding: 2px 0 2px 12px;
+}
+
 .contact-rail {
   position: sticky;
   top: 0;
@@ -818,6 +999,14 @@ textarea::placeholder {
 }
 
 @media (max-width: 860px) {
+  .group-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run-process-panel {
+    position: static;
+  }
+
   .workspace-shell {
     grid-template-columns: 230px minmax(0, 1fr);
   }
@@ -832,6 +1021,16 @@ textarea::placeholder {
 }
 
 @media (max-width: 650px) {
+  .group-workspace {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .group-conversation-panel,
+  .run-process-panel {
+    padding: 15px;
+  }
+
   .workspace-shell {
     display: block;
   }
