@@ -289,8 +289,20 @@ export function createWorkQueue(options: WorkQueueOptions) {
       await persistEvent(completed, scope, "run.completed", { completedAt }, 1_000_000);
       return completed;
     } catch (error) {
-      await bridge?.flush();
-      const message = error instanceof Error ? error.message : String(error);
+      const failures = [error];
+      try {
+        await bridge?.flush();
+      } catch (flushError) {
+        failures.push(flushError);
+      }
+      const errorMessage = (failure: unknown) =>
+        failure instanceof Error ? failure.message : String(failure);
+      const message = failures.length === 1
+        ? errorMessage(error)
+        : `${errorMessage(error)}; event flush failed: ${errorMessage(failures[1])}`;
+      const surfacedError = failures.length === 1
+        ? error
+        : new AggregateError(failures, message);
       const alreadyRecorded = db.prepare(`
         SELECT 1 FROM events WHERE entity_type = 'run' AND entity_id = ?
           AND type IN ('run.error', 'run.aborted') LIMIT 1
@@ -305,7 +317,7 @@ export function createWorkQueue(options: WorkQueueOptions) {
         message,
         completedAt: failed.completedAt,
       }, 1_000_000);
-      throw error;
+      throw surfacedError;
     } finally {
       if (mapping) bindRunContext(mapping.piSessionId, undefined);
     }

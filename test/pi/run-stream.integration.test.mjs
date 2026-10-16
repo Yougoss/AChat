@@ -286,6 +286,49 @@ test("keeps failed and aborted Pi events attached to their durable run", async (
   `).get());
 });
 
+test("finalizes failed work and records execution plus event-flush errors", async (t) => {
+  const createWorkQueue = requireWorkQueue();
+  const fixture = createExecutionFixture();
+  t.after(() => fixture.db.close());
+  const item = addWorkItem(fixture, "flush-failure-item", "tester");
+  fixture.db.exec(`
+    CREATE TRIGGER reject_text_delta_trace
+    BEFORE INSERT ON trace_records
+    WHEN NEW.type = 'achat_event'
+      AND json_extract(NEW.payload_json, '$.type') = 'text.delta'
+    BEGIN
+      SELECT RAISE(ABORT, 'synthetic event trace failure');
+    END;
+  `);
+  const queue = createWorkQueue({
+    db: fixture.db,
+    createContactSession: async () => fakePiSession({ fail: true }),
+    idFactory: (() => {
+      let id = 0;
+      return () => id++ === 0 ? "flush-failure-run" : `flush-failure-event-${id}`;
+    })(),
+  });
+
+  await queue.start();
+  await queue.enqueueWorkItem(item.id);
+  await queue.drain();
+
+  assert.equal(createRunRepository(fixture.db).getRun("flush-failure-run").status, "failed");
+  assert.equal(createWorkItemRepository(fixture.db).getWorkItem(item.id).status, "failed");
+  const errorEvent = fixture.db.prepare(`
+    SELECT payload_json AS payload FROM events
+    WHERE entity_type = 'run' AND entity_id = 'flush-failure-run' AND type = 'run.error'
+  `).get();
+  assert.ok(errorEvent, "the execution failure must be recorded as a run.error event");
+  const errorMessage = JSON.parse(errorEvent.payload).message;
+  assert.match(errorMessage, /synthetic provider failure/);
+  assert.match(errorMessage, /synthetic event trace failure/);
+  assert.ok(fixture.db.prepare(`
+    SELECT 1 FROM events
+    WHERE entity_type = 'run' AND entity_id = 'flush-failure-run' AND type = 'run.failed'
+  `).get());
+});
+
 test("routes an explicit @all message once to every task member and no one else", async (t) => {
   const createGroupMessageService = handoffModule.createGroupMessageService;
   assert.equal(typeof createGroupMessageService, "function",
