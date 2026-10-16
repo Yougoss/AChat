@@ -28,6 +28,7 @@ export default defineConfig({
     env: {
       ...process.env,
       ACHAT_DATA_DIR: searchDataDir,
+      PI_CODING_AGENT_DIR: path.join(searchDataDir, "pi-agent"),
     },
     url: "http://127.0.0.1:3010",
     reuseExistingServer: false,

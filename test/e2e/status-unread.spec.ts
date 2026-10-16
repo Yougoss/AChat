@@ -7,12 +7,12 @@ import { createRunRepository } from "../../src/server/db/repositories/run-reposi
 import { createWorkItemRepository } from "../../src/server/db/repositories/work-item-repository.ts";
 import { createUnreadRepository } from "../../src/server/db/repositories/unread-repository.ts";
 
-const dataDir = path.join(
+const dataDir = process.env.ACHAT_E2E_DATA_DIR ?? path.join(
   process.cwd(),
   ".superpowers",
   "sdd",
   "2026-10-15-achat-poc-v1",
-  "task-7-e2e-data",
+  "task-10-e2e-data",
 );
 
 test("startup recovery is visible and a later completion updates unread independently", async ({ page }) => {
@@ -74,6 +74,60 @@ test("startup recovery is visible and a later completion updates unread independ
 
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
 
+  const activeRunDb = new Database(path.join(dataDir, "achat.sqlite"));
+  try {
+    createWorkItemRepository(activeRunDb).createWorkItem({
+      id: "work-item-3",
+      taskId: "task-1",
+      contactId: "contact-1",
+      title: "Active tool evidence",
+      status: "running",
+    });
+    createRunRepository(activeRunDb).createRun({
+      id: "run-3",
+      taskId: "task-1",
+      workItemId: "work-item-3",
+      contactId: "contact-1",
+      attempt: 1,
+      status: "running",
+      startedAt: "2020-01-01T00:00:00.000Z",
+    });
+    createEventRepository(activeRunDb).appendEvent({
+      id: "run-3-started",
+      entityType: "run",
+      entityId: "run-3",
+      type: "run.started",
+      payload: {
+        runId: "run-3",
+        taskId: "task-1",
+        workItemId: "work-item-3",
+        contactId: "contact-1",
+      },
+      idempotencyKey: "run-3-started",
+      createdAt: "2020-01-01T00:00:00.000Z",
+    });
+    createEventRepository(activeRunDb).appendEvent({
+      id: "run-3-tool-started",
+      entityType: "run",
+      entityId: "run-3",
+      type: "tool.started",
+      payload: {
+        runId: "run-3",
+        taskId: "task-1",
+        workItemId: "work-item-3",
+        contactId: "contact-1",
+        toolName: "bash",
+        toolCallId: "tool-run-3",
+      },
+      idempotencyKey: "run-3-tool-started",
+      createdAt: "2020-01-01T00:00:00.000Z",
+    });
+  } finally {
+    activeRunDb.close();
+  }
+  await page.getByRole("button", { name: "Refresh activity" }).click();
+  await expect(page.getByText("Possibly stuck", { exact: true })).toBeVisible();
+
   const completionDb = new Database(path.join(dataDir, "achat.sqlite"));
   try {
     createRunRepository(completionDb).completeRun("run-2", "2026-10-16T02:01:00.000Z");
@@ -103,12 +157,45 @@ test("startup recovery is visible and a later completion updates unread independ
   await expect(page.getByLabel("1 unread runs")).toBeVisible();
   await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("open", { exact: true })).toBeVisible();
+  await expect(page.getByText("Running", { exact: true })).toBeVisible();
+
+  const secondCompletionDb = new Database(path.join(dataDir, "achat.sqlite"));
+  try {
+    createRunRepository(secondCompletionDb).completeRun("run-3", "2026-10-16T02:02:00.000Z");
+    createWorkItemRepository(secondCompletionDb).updateWorkItemStatus(
+      "work-item-3",
+      "completed",
+      "2026-10-16T02:02:00.000Z",
+    );
+    createEventRepository(secondCompletionDb).appendEvent({
+      id: "run-3-completed",
+      entityType: "run",
+      entityId: "run-3",
+      type: "run.completed",
+      payload: {
+        runId: "run-3",
+        taskId: "task-1",
+        workItemId: "work-item-3",
+        contactId: "contact-1",
+      },
+      idempotencyKey: "run-3-completed",
+      createdAt: "2026-10-16T02:02:00.000Z",
+    });
+  } finally {
+    secondCompletionDb.close();
+  }
+  await page.getByRole("button", { name: "Refresh activity" }).click();
+  await expect(page.getByLabel("2 unread runs")).toBeVisible();
+  await expect(page.getByText("Idle", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Mark runs read" }).click();
   await expect(page.getByLabel("No unread runs")).toBeVisible();
   const readDb = new Database(path.join(dataDir, "achat.sqlite"));
   try {
-    assert.equal(createUnreadRepository(readDb).getGroupRunReadCursor("group-1"), 1);
+    const unread = createUnreadRepository(readDb);
+    const completions = unread.listRunCompletions("group-1");
+    assert.equal(completions.length, 2);
+    assert.equal(unread.getGroupRunReadCursor("group-1"), completions.at(-1)?.cursor);
   } finally {
     readDb.close();
   }

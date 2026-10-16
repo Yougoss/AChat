@@ -17,6 +17,7 @@ const dataDir = process.env.ACHAT_TASK9_E2E_DATA_DIR ?? path.join(
   `task-9-e2e-data-${process.pid}-${randomUUID()}`,
 );
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+mkdirSync(path.join(dataDir, "pi-agent"), { recursive: true, mode: 0o700 });
 let cleaned = false;
 function cleanDataDir() {
   if (cleaned) return;
