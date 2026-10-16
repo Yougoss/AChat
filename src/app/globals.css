@@ -842,6 +842,39 @@ h3 {
   margin-bottom: 6px;
 }
 
+.task-description-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-description-row p {
+  margin: 0;
+}
+
+.task-description-editor {
+  display: grid;
+  max-width: 680px;
+  gap: 8px;
+}
+
+.task-description-editor label {
+  color: var(--ink-1);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.task-description-editor textarea {
+  min-height: 82px;
+}
+
+.task-description-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .message-list {
   display: grid;
   max-height: min(53vh, 620px);
@@ -1373,6 +1406,11 @@ textarea::placeholder {
 
   .conversation-header .button {
     justify-self: start;
+  }
+
+  .task-description-row {
+    display: grid;
+    justify-content: start;
   }
 
   .message-list {

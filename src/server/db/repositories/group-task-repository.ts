@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { Group, Task } from "../../domain/types.ts";
+import type { Group, Task, TaskEvent } from "../../domain/types.ts";
 import { createEventRepository, type AppendTaskEventInput } from "./event-repository.ts";
 import { asRecord, asRecords } from "./repository-utils.ts";
 
@@ -22,7 +22,21 @@ export interface CreateGroupWithTaskInput {
   task: Omit<Task, "groupId">;
 }
 
-export function createGroupTaskRepository(db: Database.Database) {
+export interface GroupTaskRepository {
+  createGroupWithTask(input: CreateGroupWithTaskInput): { group: Group; task: Task };
+  getGroup(id: string): Group | undefined;
+  getTask(id: string): Task | undefined;
+  getTaskByGroupId(groupId: string): Task | undefined;
+  updateTaskDescription(taskId: string, description: string): Task | undefined;
+  addGroupMember(groupId: string, contactId: string, role?: string): void;
+  listGroupMembers(groupId: string): string[];
+  addTaskMember(taskId: string, contactId: string, role?: string): void;
+  listTaskMembers(taskId: string): string[];
+  appendTaskEvent(input: AppendTaskEventInput): TaskEvent;
+  listTaskEvents(taskId: string): TaskEvent[];
+}
+
+export function createGroupTaskRepository(db: Database.Database): GroupTaskRepository {
   const eventRepository = createEventRepository(db);
   const insertGroupAndTask = db.transaction((input: CreateGroupWithTaskInput) => {
     db.prepare("INSERT INTO groups (id, name, description) VALUES (?, ?, ?)")
@@ -47,6 +61,14 @@ export function createGroupTaskRepository(db: Database.Database) {
     return row ? { ...asRecord<TaskRow>(row) } : undefined;
   }
 
+  function getTask(id: string): Task | undefined {
+    const row = db.prepare(`
+      SELECT id, group_id AS groupId, project_id AS projectId, description, status
+      FROM tasks WHERE id = ?
+    `).get(id);
+    return row ? { ...asRecord<TaskRow>(row) } : undefined;
+  }
+
   return {
     createGroupWithTask(input: CreateGroupWithTaskInput): { group: Group; task: Task } {
       insertGroupAndTask(input);
@@ -59,14 +81,13 @@ export function createGroupTaskRepository(db: Database.Database) {
       const row = db.prepare("SELECT id, name, description FROM groups WHERE id = ?").get(id);
       return row ? { ...asRecord<GroupRow>(row) } : undefined;
     },
-    getTask(id: string): Task | undefined {
-      const row = db.prepare(`
-        SELECT id, group_id AS groupId, project_id AS projectId, description, status
-        FROM tasks WHERE id = ?
-      `).get(id);
-      return row ? { ...asRecord<TaskRow>(row) } : undefined;
-    },
+    getTask,
     getTaskByGroupId,
+    updateTaskDescription(taskId: string, description: string): Task | undefined {
+      const result = db.prepare("UPDATE tasks SET description = ? WHERE id = ?")
+        .run(description, taskId);
+      return result.changes > 0 ? getTask(taskId) : undefined;
+    },
     addGroupMember(groupId: string, contactId: string, role = "member"): void {
       db.prepare(`
         INSERT INTO group_members (group_id, contact_id, role) VALUES (?, ?, ?)

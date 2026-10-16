@@ -63,7 +63,6 @@ test("Developer and Test complete a Feature through explicit, contact-isolated h
       .toBeVisible();
     await expect(page.getByText("No work has been dispatched. Mention a member with @contact or use @all."))
       .toBeVisible();
-
     const itemCountBefore = Number((db.prepare(
       "SELECT COUNT(*) AS count FROM work_items WHERE task_id = 'task-demo'",
     ).get() as { count: number }).count);
@@ -85,8 +84,33 @@ test("Developer and Test complete a Feature through explicit, contact-isolated h
     assert.equal(queueCalls, 0, "a blank description must not prompt a model session");
     assert.equal(faux.state.callCount, 0, "a blank description must not make a faux provider request");
 
-    db.prepare("UPDATE tasks SET description = ? WHERE id = ?")
-      .run("Implement the Feature, verify the fix, and report completion.", "task-demo");
+    const priorSessionCount = Number((db.prepare(
+      "SELECT COUNT(*) AS count FROM pi_session_mappings WHERE task_id = 'task-demo'",
+    ).get() as { count: number }).count);
+    const priorRunCount = Number((db.prepare(
+      "SELECT COUNT(*) AS count FROM runs WHERE task_id = 'task-demo'",
+    ).get() as { count: number }).count);
+    await page.getByRole("button", { name: "Add task description" }).click();
+    await page.getByRole("textbox", { name: "Task description" })
+      .fill("Implement the Feature, verify the fix, and report completion.");
+    const descriptionResponse = page.waitForResponse((response) =>
+      response.request().method() === "PATCH"
+      && response.url().endsWith("/api/tasks/task-demo"));
+    await page.getByRole("button", { name: "Save changes" }).click();
+    expect((await descriptionResponse).status()).toBe(200);
+    await expect(page.getByRole("button", { name: "Edit task description" })).toBeVisible();
+    assert.equal(
+      (db.prepare("SELECT description FROM tasks WHERE id = 'task-demo'")
+        .get() as { description: string }).description,
+      "Implement the Feature, verify the fix, and report completion.",
+    );
+    assert.equal(Number((db.prepare(
+      "SELECT COUNT(*) AS count FROM pi_session_mappings WHERE task_id = 'task-demo'",
+    ).get() as { count: number }).count), priorSessionCount);
+    assert.equal(Number((db.prepare(
+      "SELECT COUNT(*) AS count FROM runs WHERE task_id = 'task-demo'",
+    ).get() as { count: number }).count), priorRunCount);
+
     await page.route("**/api/groups/group-demo/messages", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
@@ -96,9 +120,6 @@ test("Developer and Test complete a Feature through explicit, contact-isolated h
       const result = await createGroupMessageService(db).sendGroupMessage("group-demo", body);
       await route.fulfill({ status: 201, json: result });
     });
-    await page.reload();
-    await expect(page.getByText("Implement the Feature, verify the fix, and report completion."))
-      .toBeVisible();
     await page.getByRole("textbox", { name: "Message task members" })
       .fill("@Developer implement the Feature and ask Test to verify it.");
     await page.getByRole("button", { name: "Send to group" }).click();

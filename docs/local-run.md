@@ -31,7 +31,8 @@ by the POC model and login UI.
 2. Create the **Feature** group/task in the registered project. Start with an
    empty task description and send an explicit `@Developer` request. The request
    must be rejected before work-item/run creation or a model request.
-3. Add a task description, then explicitly mention **@Developer**. Follow the
+3. Use **Add task description** in the group conversation and save a clear
+   objective, then explicitly mention **@Developer**. Follow the
    run/process panel for its run and tool evidence.
 4. Confirm the structured handoff chain in the group conversation:
    **Developer → Test → Developer → Test**. Test reports the bug, Developer
@@ -40,14 +41,11 @@ by the POC model and login UI.
    see their own independent task-session references and cannot read the other's
    trace.
 
-**Current UI limitation:** the task description is read-only after a group/task
-is created; there is not yet an edit control. The deterministic acceptance test
-checks the empty-description rejection, updates only its isolated test fixture,
-and then runs the described Feature through real AChat persistence, handoff,
-queue, and trace services with scripted Pi sessions. For a live Copilot run,
-create a task with its description already filled in; treat the blank-description
-check and live-provider run as separate checks rather than claiming the current
-UI edits the same task.
+The group conversation can edit and save the task description before dispatch.
+An empty description remains blocked by the normal message/dispatch path; saving
+the description updates only the task and does not rewrite run or Pi-session
+history. The deterministic acceptance test covers blank-description rejection,
+the same-task UI edit/save, and the Feature handoff using scripted Pi sessions.
 
 ## Demo B: unread, stuck evidence, recovery, and search
 

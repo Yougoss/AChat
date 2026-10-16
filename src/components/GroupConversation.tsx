@@ -60,6 +60,10 @@ export function GroupConversation({
   const [pendingAttentionCount, setPendingAttentionCount] = useState(initialPendingAttentionCount);
   const [approvals, setApprovals] = useState(initialApprovals);
   const [content, setContent] = useState("");
+  const [taskDescription, setTaskDescription] = useState(task.description);
+  const [descriptionDraft, setDescriptionDraft] = useState(task.description);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [liveStatus, setLiveStatus] = useState("Connecting to live activity");
@@ -169,6 +173,31 @@ export function GroupConversation({
     }
   }
 
+  async function saveTaskDescription(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!descriptionDraft.trim()) return;
+    setSavingDescription(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: descriptionDraft }),
+      });
+      const result = await response.json() as { task?: Task; error?: string };
+      if (!response.ok || !result.task) {
+        throw new Error(result.error ?? "Unable to save task description");
+      }
+      setTaskDescription(result.task.description);
+      setDescriptionDraft(result.task.description);
+      setEditingDescription(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save task description");
+    } finally {
+      setSavingDescription(false);
+    }
+  }
+
   return (
     <main className="group-workspace">
       <section className="conversation-panel group-conversation-panel" aria-labelledby="group-title">
@@ -176,7 +205,53 @@ export function GroupConversation({
           <div>
             <p className="eyebrow">Dispatch workbench · group task</p>
             <h1 id="group-title">{group.name}</h1>
-            <p>{task.description || "No task description yet. Add one before the first work trigger."}</p>
+            {editingDescription ? (
+              <form className="task-description-editor" onSubmit={(event) => void saveTaskDescription(event)}>
+                <label htmlFor={`task-description-${task.id}`}>Task description</label>
+                <textarea
+                  id={`task-description-${task.id}`}
+                  value={descriptionDraft}
+                  onChange={(event) => setDescriptionDraft(event.currentTarget.value)}
+                  rows={3}
+                  required
+                />
+                <div className="task-description-actions">
+                  <button
+                    className="button button-primary"
+                    type="submit"
+                    disabled={savingDescription || !descriptionDraft.trim()}
+                  >
+                    {savingDescription ? "Saving…" : "Save changes"}
+                  </button>
+                  <button
+                    className="button button-quiet"
+                    type="button"
+                    onClick={() => {
+                      setDescriptionDraft(taskDescription);
+                      setEditingDescription(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="task-description-row">
+                <p>
+                  {taskDescription || "No task description yet. Add one before the first work trigger."}
+                </p>
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  onClick={() => {
+                    setDescriptionDraft(taskDescription);
+                    setEditingDescription(true);
+                  }}
+                >
+                  {taskDescription ? "Edit task description" : "Add task description"}
+                </button>
+              </div>
+            )}
           </div>
           <button className="button button-quiet" type="button" onClick={() => void refresh()}>
             Refresh activity
