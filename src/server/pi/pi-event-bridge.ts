@@ -110,6 +110,15 @@ export function createPiEventBridge(options: BridgeOptions) {
       });
       return;
     }
+    if (type === "tool_execution_cancel") {
+      pending = pending.then(async () => {
+        await record("tool.cancelled", {
+          toolName: value.toolName,
+          toolCallId: value.toolCallId,
+        });
+      });
+      return;
+    }
     if (type === "message_end") {
       const message = value.message;
       if (

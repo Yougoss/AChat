@@ -25,7 +25,9 @@ import { createGroupTaskRepository } from "../db/repositories/group-task-reposit
 import { createMessageRepository } from "../db/repositories/message-repository.ts";
 import { createSessionRepository } from "../db/repositories/session-repository.ts";
 import { createTraceExtension } from "./trace-extension.ts";
+import { createApprovalExtension } from "./approval-extension.ts";
 import { createTraceQueryService } from "../services/trace-query-service.ts";
+import { createApprovalService } from "../services/approval-service.ts";
 import { createQueryContactSessionsTool } from "./tools/query-contact-sessions.ts";
 import { createDelegateToMemberTool } from "./tools/delegate-to-member.ts";
 import { getPiModelRuntime } from "./model-runtime.ts";
@@ -239,6 +241,17 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
         })()
       : SessionManager.create(cwd, sessionDir);
     const settingsManager = SettingsManager.create(cwd, agentDir);
+    const approvalExtension = options.sessionKind === "task"
+      ? createApprovalExtension({
+          service: createApprovalService(dependencies.db),
+          context: {
+            taskId: options.taskId!,
+            workItemId: options.workItemId ?? "",
+            runId: options.runId ?? "",
+            piSessionId: sessionManager.getSessionId(),
+          },
+        })
+      : undefined;
     const resourceLoader = constructResourceLoader({
       cwd,
       agentDir,
@@ -249,6 +262,7 @@ export function createSessionFactory(dependencies: SessionFactoryDependencies) {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
+      ...(approvalExtension ? { extensionFactories: [approvalExtension] } : {}),
     });
     await resourceLoader.reload();
 

@@ -26,6 +26,7 @@ test("registers the read-only contact query only for contact-chat sessions", asy
   const { task } = seedGroupTask(db);
   createGroupTaskRepository(db).addTaskMember(task.id, "contact-1");
   const sessions = [];
+  const loaderOptions = [];
   const taskSessionCalls = [];
   const runtime = {
     async getAvailable() {
@@ -45,7 +46,10 @@ test("registers the read-only contact query only for contact-chat sessions", asy
     dataDir,
     agentDir,
     sessionRegistry: registry,
-    createResourceLoader: () => ({ reload: async () => {} }),
+    createResourceLoader: (options) => {
+      loaderOptions.push(options);
+      return { reload: async () => {} };
+    },
     createSession: async (options) => {
       sessions.push(options);
       return {
@@ -68,6 +72,8 @@ test("registers the read-only contact query only for contact-chat sessions", asy
   assert.deepEqual(contactTools.map((tool) => tool.name), ["query_contact_sessions"]);
   assert.deepEqual(taskTools.map((tool) => tool.name), ["delegate_to_member"]);
   assert.equal(sessions[1].noTools, "all");
+  assert.equal(loaderOptions[0].extensionFactories.length, 1);
+  assert.equal(loaderOptions[1].extensionFactories, undefined);
   assert.doesNotMatch(JSON.stringify(contactTools[0].parameters), /contactId|sessionFile|path/);
   assert.deepEqual(taskSessionCalls, []);
 });

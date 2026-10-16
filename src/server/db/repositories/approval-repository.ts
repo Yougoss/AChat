@@ -77,7 +77,7 @@ export function createApprovalRepository(db: Database.Database) {
                action_json AS actionJson, status, created_at AS createdAt,
                decided_at AS decidedAt
         FROM approvals WHERE task_id = ? ORDER BY created_at, id
-      `).all()).map(rowToApproval);
+      `).all(taskId)).map(rowToApproval);
     },
     updateApprovalStatus(
       id: string,

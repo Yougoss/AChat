@@ -1,6 +1,10 @@
 import { createGroupMessageService } from "../../../../../server/services/handoff-service.ts";
 import { getAchatDatabase, startAchatRuntime } from "../../../../../server/runtime-bootstrap.ts";
 import { getAchatWorkQueue } from "../../../../../server/runtime-bootstrap.ts";
+import { createUnreadRepository } from "../../../../../server/db/repositories/unread-repository.ts";
+import { createAttentionRepository } from "../../../../../server/db/repositories/attention-repository.ts";
+import { createApprovalService } from "../../../../../server/services/approval-service.ts";
+import { createTaskStatusService } from "../../../../../server/services/task-status-service.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +19,10 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
     const db = getAchatDatabase();
     const group = db.prepare("SELECT id FROM groups WHERE id = ?").get(groupId);
     if (!group) return Response.json({ error: `Group not found: ${groupId}` }, { status: 404 });
-    const task = db.prepare("SELECT id FROM tasks WHERE group_id = ?").get(groupId) as { id: string };
+    const task = db.prepare("SELECT id, status FROM tasks WHERE group_id = ?").get(groupId) as {
+      id: string;
+      status: string;
+    };
     const messages = db.prepare(`
       SELECT messages.id, messages.conversation_id AS conversationId, messages.role,
              messages.content, messages.metadata_json AS metadataJson,
@@ -54,13 +61,25 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
       const event = row as { id: string; runId: string; type: string; payload: string };
       return { ...event, payload: JSON.parse(event.payload) as Record<string, unknown> };
     });
+    const taskStatus = createTaskStatusService(db);
     const visibleRuns = (runs as Array<{ id: string }>).map((run) => ({
       ...run,
+      ...taskStatus.getRunExecutionStatus(run.id),
       events: events.filter((event) => event.runId === run.id).sort(
         (left, right) => Number(left.payload.eventSequence ?? 0) - Number(right.payload.eventSequence ?? 0),
       ),
     }));
-    return Response.json({ messages, runs: visibleRuns });
+    const pendingAttentionCount = createAttentionRepository(db)
+      .listAttentionRequestsForTask(task.id)
+      .filter(({ status }) => status === "open").length;
+    return Response.json({
+      messages,
+      runs: visibleRuns,
+      taskStatus: task.status,
+      unreadCount: createUnreadRepository(db).countUnreadRuns(groupId),
+      pendingAttentionCount,
+      approvals: createApprovalService(db).listPendingApprovals(task.id),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load group messages";
     return Response.json({ error: message }, { status: 500 });

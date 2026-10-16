@@ -13,7 +13,7 @@ test("stores ordered application events and scopes idempotency keys by entity", 
     task: { id: "task-1", projectId: "project-1", description: "Task", status: "open" },
   });
   const repository = createEventRepository(db);
-  repository.appendEvent({
+  const firstEvent = repository.appendEvent({
     id: "event-1",
     entityType: "task",
     entityId: task.id,
@@ -33,6 +33,20 @@ test("stores ordered application events and scopes idempotency keys by entity", 
   });
 
   assert.deepEqual(repository.listEventsForEntity("task", task.id).map(({ id }) => id), ["event-1"]);
+  assert.equal(
+    db.prepare("SELECT event_id AS eventId FROM achat_event_cursors WHERE cursor = ?")
+      .get(firstEvent.cursor).eventId,
+    "event-1",
+  );
+  assert.equal(repository.appendEvent({
+    id: "event-1-replayed",
+    entityType: "task",
+    entityId: task.id,
+    type: "task.created",
+    payload: { value: 1 },
+    idempotencyKey: "same-key",
+    createdAt: "2026-10-15T10:00:00.000Z",
+  }).cursor, firstEvent.cursor);
   assert.throws(() => repository.appendEvent({
     id: "event-replay-conflict",
     entityType: "task",

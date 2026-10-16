@@ -19,7 +19,7 @@ test("database lifecycle defers opening until start and closes on stop", async (
   const db = lifecycle.getDatabase();
   assert.equal(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").get().version,
-    5,
+    6,
   );
 
   await lifecycle.stop();
@@ -37,7 +37,7 @@ test("openDatabase enables foreign keys and migrations are repeatable", (t) => {
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3, 4, 5],
+    [1, 2, 3, 4, 5, 6],
   );
 });
 
@@ -99,7 +99,7 @@ test("upgrades version-one ownership and run data into current schema boundaries
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3, 4, 5],
+    [1, 2, 3, 4, 5, 6],
   );
   assert.equal(
     db.prepare("SELECT contact_id AS contactId FROM conversations WHERE id = 'private-1'").get().contactId,
@@ -211,7 +211,7 @@ test("database migrations do not depend on the global URL constructor", async ()
     clientModule.migrate(db);
     assert.equal(
       db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version,
-      5,
+      6,
     );
   } finally {
     db.close();

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import type { Group, Message, Run, Task } from "../server/domain/types.ts";
+import type { Approval, Group, Message, Run, Task } from "../server/domain/types.ts";
+import { ApprovalCard } from "./ApprovalCard.tsx";
 import { RunProcessView } from "./RunProcessView.tsx";
+import { TaskStatusPanel } from "./TaskStatusPanel.tsx";
 
 interface ContactLabel {
   id: string;
@@ -13,6 +15,8 @@ interface ContactLabel {
 interface VisibleRun extends Run {
   contactName: string;
   title: string;
+  stuck: "stuck" | "not_stuck" | "unknown";
+  lifecycleEvidence: string;
   events?: Array<{ id: string; type: string; payload: Record<string, unknown> }>;
 }
 
@@ -22,6 +26,11 @@ interface GroupConversationProps {
   messages: Message[];
   runs: VisibleRun[];
   contacts: ContactLabel[];
+  taskStatus: string;
+  unreadCount: number;
+  pendingAttentionCount: number;
+  approvals: Approval[];
+  eventCursor: number;
 }
 
 function senderLabel(message: Message, contacts: ContactLabel[]): string {
@@ -37,19 +46,89 @@ export function GroupConversation({
   messages: initialMessages,
   runs: initialRuns,
   contacts,
+  taskStatus: initialTaskStatus = "unknown",
+  unreadCount: initialUnreadCount = 0,
+  pendingAttentionCount: initialPendingAttentionCount = 0,
+  approvals: initialApprovals = [],
+  eventCursor = 0,
 }: GroupConversationProps) {
   const [messages, setMessages] = useState(initialMessages);
   const [runs, setRuns] = useState(initialRuns);
+  const [taskStatus, setTaskStatus] = useState(initialTaskStatus);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  const [pendingAttentionCount, setPendingAttentionCount] = useState(initialPendingAttentionCount);
+  const [approvals, setApprovals] = useState(initialApprovals);
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [liveStatus, setLiveStatus] = useState("Connecting to live activity");
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const response = await fetch(`/api/groups/${encodeURIComponent(group.id)}/messages`);
-    const result = await response.json() as { messages?: Message[]; runs?: VisibleRun[]; error?: string };
+    const result = await response.json() as {
+      messages?: Message[];
+      runs?: VisibleRun[];
+      taskStatus?: string;
+      unreadCount?: number;
+      pendingAttentionCount?: number;
+      approvals?: Approval[];
+      error?: string;
+    };
     if (!response.ok) throw new Error(result.error ?? "Unable to refresh task activity");
     setMessages(result.messages ?? []);
     setRuns(result.runs ?? []);
+    setTaskStatus(result.taskStatus ?? initialTaskStatus);
+    setUnreadCount(result.unreadCount ?? 0);
+    setPendingAttentionCount(result.pendingAttentionCount ?? 0);
+    setApprovals(result.approvals ?? []);
+  }, [group.id, initialTaskStatus]);
+
+  useEffect(() => {
+    const source = new EventSource(`/api/events?after=${eventCursor}`);
+    source.onopen = () => setLiveStatus("Live activity connected");
+    source.onerror = () => setLiveStatus("Live activity is reconnecting");
+    source.onmessage = (message) => {
+      try {
+        const event = JSON.parse(message.data) as {
+          type?: string;
+          payload?: Record<string, unknown>;
+        };
+        if (event.payload?.taskId !== task.id) return;
+        if (
+          event.type === "run.started"
+          || event.type === "run.completed"
+          || event.type === "run.failed"
+          || event.type === "run.interrupted"
+          || event.type === "tool.started"
+          || event.type === "tool.completed"
+          || event.type === "tool.failed"
+          || event.type === "tool.cancelled"
+          || event.type === "approval.requested"
+          || event.type === "approval.decided"
+        ) {
+          void refresh().catch((cause: unknown) => {
+            setError(cause instanceof Error ? cause.message : "Unable to refresh task activity");
+          });
+        }
+      } catch {
+        setError("Received an unreadable live activity event");
+      }
+    };
+    return () => source.close();
+  }, [eventCursor, refresh, task.id]);
+
+  async function markRunsRead() {
+    setError("");
+    try {
+      const response = await fetch(`/api/groups/${encodeURIComponent(group.id)}/read`, {
+        method: "POST",
+      });
+      const result = await response.json() as { error?: string; unreadCount?: number };
+      if (!response.ok) throw new Error(result.error ?? "Unable to mark run activity read");
+      setUnreadCount(result.unreadCount ?? 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to mark run activity read");
+    }
   }
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
@@ -90,6 +169,7 @@ export function GroupConversation({
             Refresh activity
           </button>
         </header>
+        <div className="group-live-status" role="status">{liveStatus}</div>
         <div className="group-member-strip" aria-label="Task members">
           {contacts.map((contact) => (
             <span className="group-member-chip" key={contact.id}>
@@ -124,6 +204,32 @@ export function GroupConversation({
             </li>
           ) : null}
         </ol>
+        <section className="approval-section" aria-labelledby="approval-title">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Action gate</p>
+              <h2 id="approval-title">Approvals</h2>
+            </div>
+            {unreadCount > 0 ? (
+              <button className="button button-quiet" type="button" onClick={() => void markRunsRead()}>
+                Mark runs read
+              </button>
+            ) : null}
+          </div>
+          {!approvals.length ? (
+            <p className="approval-empty">No actions are waiting for approval.</p>
+          ) : (
+            <div className="approval-list">
+              {approvals.map((approval) => (
+                <ApprovalCard
+                  approval={approval}
+                  key={approval.id}
+                  onDecided={() => void refresh()}
+                />
+              ))}
+            </div>
+          )}
+        </section>
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`group-message-${group.id}`}>Message task members</label>
           <textarea
@@ -143,7 +249,15 @@ export function GroupConversation({
         </form>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </section>
-      <RunProcessView runs={runs} />
+      <div className="group-status-column">
+        <TaskStatusPanel
+          taskStatus={taskStatus}
+          runs={runs}
+          unreadCount={unreadCount}
+          pendingAttentionCount={pendingAttentionCount}
+        />
+        <RunProcessView runs={runs} />
+      </div>
     </main>
   );
 }

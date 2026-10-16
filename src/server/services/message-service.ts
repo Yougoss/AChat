@@ -7,6 +7,7 @@ import type { Message } from "../domain/types.ts";
 import { resolveDataDir } from "../app-runtime.ts";
 import { migrate, openDatabase } from "../db/client.ts";
 import { createMessageRepository } from "../db/repositories/message-repository.ts";
+import { createUnreadRepository } from "../db/repositories/unread-repository.ts";
 import { getPiModelRuntime } from "../pi/model-runtime.ts";
 import { createContactSession } from "../pi/session-factory.ts";
 
@@ -102,6 +103,15 @@ export function createContactMessageService(
       return conversation ? messages.listMessages(conversation.id) : [];
     },
   };
+}
+
+export function markGroupRunsRead(
+  db: Database.Database,
+  groupId: string,
+): void {
+  const group = db.prepare("SELECT id FROM groups WHERE id = ?").get(groupId);
+  if (!group) throw new Error(`Group not found: ${groupId}`);
+  createUnreadRepository(db).markGroupRunsRead(groupId);
 }
 
 async function withMessageService<T>(

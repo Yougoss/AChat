@@ -18,4 +18,5 @@ test("migration creates the project and task persistence tables", async (t) => {
   assert.doesNotThrow(() => db.prepare("SELECT * FROM tasks").all());
   assert.doesNotThrow(() => db.prepare("SELECT * FROM run_completions").all());
   assert.doesNotThrow(() => db.prepare("SELECT * FROM attention_requests").all());
+  assert.doesNotThrow(() => db.prepare("SELECT * FROM achat_event_cursors").all());
 });

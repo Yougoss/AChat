@@ -4,6 +4,12 @@ import { WorkspaceShell } from "../../../components/WorkspaceShell.tsx";
 import { createAgentRepository } from "../../../server/db/repositories/agent-repository.ts";
 import { createGroupTaskRepository } from "../../../server/db/repositories/group-task-repository.ts";
 import { createMessageRepository } from "../../../server/db/repositories/message-repository.ts";
+import { createEventRepository } from "../../../server/db/repositories/event-repository.ts";
+import { createUnreadRepository } from "../../../server/db/repositories/unread-repository.ts";
+import { createAttentionRepository } from "../../../server/db/repositories/attention-repository.ts";
+import { createApprovalService } from "../../../server/services/approval-service.ts";
+import { createTaskStatusService } from "../../../server/services/task-status-service.ts";
+import { markGroupRunsRead } from "../../../server/services/message-service.ts";
 import { startAchatRuntime, getAchatDatabase } from "../../../server/runtime-bootstrap.ts";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +26,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
   const group = groups.getGroup(groupId);
   const task = groups.getTaskByGroupId(groupId);
   if (!group || !task) notFound();
+  markGroupRunsRead(db, groupId);
   const memberIds = groups.listTaskMembers(task.id);
   const contacts = createAgentRepository(db).listContacts()
     .filter((contact) => memberIds.includes(contact.id))
@@ -66,12 +73,20 @@ export default async function GroupPage({ params }: GroupPageProps) {
     bucket.push({ id: event.id, type: event.type, payload });
     runEvents.set(event.runId, bucket);
   }
+  const taskStatusService = createTaskStatusService(db);
   const visibleRuns = runs.map((run) => ({
     ...run,
+    ...taskStatusService.getRunExecutionStatus(run.id),
     events: (runEvents.get(run.id) ?? []).sort(
       (left, right) => Number(left.payload.eventSequence ?? 0) - Number(right.payload.eventSequence ?? 0),
     ),
   }));
+  const pendingAttentionCount = createAttentionRepository(db)
+    .listAttentionRequestsForTask(task.id)
+    .filter(({ status }) => status === "open").length;
+  const approvals = createApprovalService(db).listPendingApprovals(task.id);
+  const unreadCount = createUnreadRepository(db).countUnreadRuns(groupId);
+  const eventCursor = createEventRepository(db).getCurrentCursor();
 
   return (
     <WorkspaceShell>
@@ -81,6 +96,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
         messages={messages}
         runs={visibleRuns}
         contacts={contacts}
+        taskStatus={task.status}
+        unreadCount={unreadCount}
+        pendingAttentionCount={pendingAttentionCount}
+        approvals={approvals}
+        eventCursor={eventCursor}
       />
     </WorkspaceShell>
   );
