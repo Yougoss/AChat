@@ -31,6 +31,8 @@ The independent review found two crash windows that could leave work items in st
 
 An intermediate build also caught that Next.js route modules cannot export arbitrary helpers. The error-to-status mapper was moved into `src/server/lifecycle/retry-errors.ts`; the final build passed.
 
+The independent re-review of commit `6157f72` found no remaining Critical, Important, or Minor issues.
+
 The existing E2E expectation was updated to reflect startup reconciliation: the persisted active run appears interrupted after app startup; the test then creates a new active attempt and confirms completion/unread behavior.
 
 ## Pi session acceptance limitation
