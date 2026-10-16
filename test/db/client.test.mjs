@@ -19,7 +19,7 @@ test("database lifecycle defers opening until start and closes on stop", async (
   const db = lifecycle.getDatabase();
   assert.equal(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").get().version,
-    2,
+    3,
   );
 
   await lifecycle.stop();
@@ -37,11 +37,11 @@ test("openDatabase enables foreign keys and migrations are repeatable", (t) => {
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2],
+    [1, 2, 3],
   );
 });
 
-test("upgrades version-one ownership and run data into version-two boundaries", async (t) => {
+test("upgrades version-one ownership and run data into current schema boundaries", async (t) => {
   const db = new Database(":memory:");
   t.after(() => db.close());
   db.pragma("foreign_keys = ON");
@@ -85,7 +85,7 @@ test("upgrades version-one ownership and run data into version-two boundaries", 
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2],
+    [1, 2, 3],
   );
   assert.equal(
     db.prepare("SELECT contact_id AS contactId FROM conversations WHERE id = 'private-1'").get().contactId,
@@ -102,6 +102,60 @@ test("upgrades version-one ownership and run data into version-two boundaries", 
       groupId: "group-1",
       completedAt: "2026-10-15T10:01:00.000Z",
     },
+  );
+});
+
+test("refuses to upgrade a v2 database with an attention request scoped to another work item's run", (t) => {
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  db.pragma("foreign_keys = ON");
+  db.exec(readFileSync(
+    new URL("../../src/server/db/migrations/001_initial.sql", import.meta.url),
+    "utf8",
+  ));
+  db.exec(readFileSync(
+    new URL("../../src/server/db/migrations/002_contact_unread_boundaries.sql", import.meta.url),
+    "utf8",
+  ));
+  db.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    INSERT INTO schema_migrations (version) VALUES (1), (2);
+    INSERT INTO agents (id, model_provider, model_id)
+      VALUES ('agent-1', 'test', 'model'), ('agent-2', 'test', 'model');
+    INSERT INTO contacts (id, agent_id, name)
+      VALUES ('contact-1', 'agent-1', 'Builder'), ('contact-2', 'agent-2', 'Reviewer');
+    INSERT INTO projects (id, name, root_path) VALUES ('project-1', 'AChat', '/workspace');
+    INSERT INTO groups (id, name) VALUES ('group-1', 'Planning');
+    INSERT INTO tasks (id, group_id, project_id, description, status)
+      VALUES ('task-1', 'group-1', 'project-1', 'Build', 'open');
+    INSERT INTO work_items (id, task_id, contact_id, title, status)
+      VALUES
+        ('item-1', 'task-1', 'contact-1', 'First work', 'pending'),
+        ('item-2', 'task-1', 'contact-2', 'Second work', 'pending');
+    INSERT INTO runs (
+      id, task_id, work_item_id, contact_id, attempt, status, started_at
+    ) VALUES (
+      'run-2', 'task-1', 'item-2', 'contact-2', 1, 'running', '2026-10-15T10:00:00.000Z'
+    );
+    INSERT INTO attention_requests (
+      id, task_id, work_item_id, run_id, approval_id, kind, status, created_at, resolved_at
+    ) VALUES (
+      'attention-1', 'task-1', 'item-1', 'run-2', NULL, 'input', 'open',
+      '2026-10-15T10:00:00.000Z', NULL
+    );
+  `);
+
+  assert.throws(
+    () => migrate(db),
+    /attention request whose run belongs to a different work item/i,
+  );
+  assert.deepEqual(
+    db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
+      .map(({ version }) => version),
+    [1, 2],
   );
 });
 

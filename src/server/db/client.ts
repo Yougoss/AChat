@@ -14,6 +14,10 @@ const migrationFiles = [
     version: 2,
     path: fileURLToPath(new URL("./migrations/002_contact_unread_boundaries.sql", import.meta.url)),
   },
+  {
+    version: 3,
+    path: fileURLToPath(new URL("./migrations/003_attention_run_work_item_scope.sql", import.meta.url)),
+  },
 ];
 const latestMigrationVersion = migrationFiles.at(-1)!.version;
 
@@ -94,6 +98,24 @@ function assertVersionOneDataCanUpgrade(db: Database.Database): void {
   }
 }
 
+function assertVersionTwoAttentionRequestsCanUpgrade(db: Database.Database): void {
+  const mismatchedAttentionRequest = db.prepare(`
+    SELECT attention_requests.id
+    FROM attention_requests
+    JOIN runs
+      ON runs.id = attention_requests.run_id
+     AND runs.task_id = attention_requests.task_id
+    WHERE attention_requests.run_id IS NOT NULL
+      AND runs.work_item_id != attention_requests.work_item_id
+    LIMIT 1
+  `).get();
+  if (mismatchedAttentionRequest) {
+    throw new Error(
+      "Cannot migrate an attention request whose run belongs to a different work item",
+    );
+  }
+}
+
 export function openDatabase(databasePath: string): Database.Database {
   if (databasePath !== ":memory:" && !databasePath.startsWith("file:")) {
     mkdirSync(path.dirname(path.resolve(databasePath)), { recursive: true });
@@ -122,6 +144,9 @@ export function migrate(db: Database.Database): void {
     if (migration.version <= currentVersion) continue;
     if (migration.version === 2 && currentVersion === 1) {
       assertVersionOneDataCanUpgrade(db);
+    }
+    if (migration.version === 3 && currentVersion === 2) {
+      assertVersionTwoAttentionRequestsCanUpgrade(db);
     }
     const sql = readFileSync(migration.path, "utf8");
     db.transaction(() => {

@@ -82,3 +82,49 @@ test("requires an approval ID only for approval-kind attention requests", (t) =>
     kind: "approval",
   }), /approval|constraint/i);
 });
+
+test("rejects an attention request pairing a work item with another member's run", (t) => {
+  const db = createTestDatabase();
+  t.after(() => db.close());
+  seedProject(db);
+  seedContact(db);
+  seedContact(db, "contact-2");
+  const { task } = createGroupTaskRepository(db).createGroupWithTask({
+    group: { id: "group-1", name: "Planning", description: "Plan" },
+    task: { id: "task-1", projectId: "project-1", description: "Task", status: "open" },
+  });
+  const workItems = createWorkItemRepository(db);
+  const firstItem = workItems.createWorkItem({
+    id: "item-1",
+    taskId: task.id,
+    contactId: "contact-1",
+    title: "First member's work",
+    status: "pending",
+  });
+  const secondItem = workItems.createWorkItem({
+    id: "item-2",
+    taskId: task.id,
+    contactId: "contact-2",
+    title: "Second member's work",
+    status: "pending",
+  });
+  const runs = createRunRepository(db);
+  const otherMemberRun = runs.createRun({
+    id: "run-2",
+    taskId: task.id,
+    workItemId: secondItem.id,
+    contactId: "contact-2",
+    attempt: 1,
+    status: "running",
+    startedAt: "2026-10-15T10:00:00.000Z",
+  });
+
+  assert.throws(() => createAttentionRepository(db).createAttentionRequest({
+    id: "cross-member-attention",
+    taskId: task.id,
+    workItemId: firstItem.id,
+    runId: otherMemberRun.id,
+    approvalId: null,
+    kind: "input",
+  }), /foreign key|work item|scope|constraint/i);
+});
