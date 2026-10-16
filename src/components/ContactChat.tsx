@@ -93,6 +93,18 @@ function ContactChatSession({
     };
   }, [contactId, initialContact, initialMessages]);
 
+  useEffect(() => {
+    const fragment = window.location.hash.slice(1);
+    if (!fragment) return;
+    let targetId = fragment;
+    try {
+      targetId = decodeURIComponent(fragment);
+    } catch {
+      targetId = fragment;
+    }
+    document.getElementById(targetId)?.scrollIntoView({ block: "center" });
+  }, [messages]);
+
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!contactId || !content.trim()) return;
@@ -218,7 +230,7 @@ function ContactChatSession({
         </header>
         <ol className="message-list" aria-label={`${visibleContact.name} conversation`} aria-live="polite">
           {messages.map((message) => (
-            <li className={`message message-${message.role}`} key={message.id}>
+            <li className={`message message-${message.role}`} id={`message-${message.id}`} key={message.id}>
               <span className="message-role">{message.role === "assistant" ? visibleContact.name : "You"}</span>
               <p>{message.content}</p>
               <time className="evidence-meta" dateTime={message.createdAt}>
@@ -234,9 +246,9 @@ function ContactChatSession({
           ) : null}
         </ol>
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
-          <label className="visually-hidden" htmlFor={`message-${visibleContact.id}`}>Message {visibleContact.name}</label>
+          <label className="visually-hidden" htmlFor={`contact-message-input-${visibleContact.id}`}>Message {visibleContact.name}</label>
           <textarea
-            id={`message-${visibleContact.id}`}
+            id={`contact-message-input-${visibleContact.id}`}
             aria-label={`Message ${visibleContact.name}`}
             value={content}
             onChange={(event) => setContent(event.currentTarget.value)}

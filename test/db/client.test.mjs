@@ -19,7 +19,7 @@ test("database lifecycle defers opening until start and closes on stop", async (
   const db = lifecycle.getDatabase();
   assert.equal(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").get().version,
-    6,
+    7,
   );
 
   await lifecycle.stop();
@@ -37,8 +37,78 @@ test("openDatabase enables foreign keys and migrations are repeatable", (t) => {
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3, 4, 5, 6],
+    [1, 2, 3, 4, 5, 6, 7],
   );
+});
+
+test("migration 007 indexes existing and future visible rows but not provider traces", async (t) => {
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  db.pragma("foreign_keys = ON");
+  for (const version of [1, 2, 3, 4, 5, 6]) {
+    const migration = String(version).padStart(3, "0");
+    db.exec(readFileSync(
+      new URL(`../../src/server/db/migrations/${migration}_${
+        [
+          "initial",
+          "contact_unread_boundaries",
+          "attention_run_work_item_scope",
+          "trace_capture",
+          "task_execution",
+          "status_approvals",
+        ][version - 1]
+      }.sql`, import.meta.url),
+      "utf8",
+    ));
+  }
+  db.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    INSERT INTO schema_migrations (version) VALUES (1), (2), (3), (4), (5), (6);
+    INSERT INTO agents (id, model_provider, model_id) VALUES ('agent-search', 'test', 'model');
+    INSERT INTO contacts (id, agent_id, name, description)
+      VALUES ('contact-search', 'agent-search', 'Legacy name token', 'Legacy description token');
+    INSERT INTO projects (id, name, root_path) VALUES ('project-search', 'Search', '/legacy-search');
+    INSERT INTO groups (id, name, description)
+      VALUES ('group-search', 'Legacy group token', 'Legacy group description');
+    INSERT INTO tasks (id, group_id, project_id, description, status)
+      VALUES ('task-search', 'group-search', 'project-search', 'Legacy task token', 'open');
+    INSERT INTO task_members (task_id, contact_id) VALUES ('task-search', 'contact-search');
+    INSERT INTO conversations (id, group_id, task_id, kind)
+      VALUES ('task-conversation', 'group-search', 'task-search', 'task');
+    INSERT INTO messages (id, conversation_id, role, content, created_at)
+      VALUES ('legacy-message', 'task-conversation', 'user', 'Legacy visible body token',
+        '2026-10-16T10:00:00.000Z');
+    INSERT INTO conversations (id, contact_id, kind)
+      VALUES ('private-conversation', 'contact-search', 'private');
+    INSERT INTO pi_session_mappings (
+      id, contact_id, task_id, conversation_id, kind, pi_session_id, session_file
+    ) VALUES (
+      'mapping-search', 'contact-search', NULL, 'private-conversation', 'private',
+      'pi-session-search', '/sessions/search.jsonl'
+    );
+    INSERT INTO trace_records (id, mapping_id, type, payload_json)
+      VALUES ('provider-trace', 'mapping-search', 'provider_event',
+        '{"content":"provider-only secret token"}');
+  `);
+
+  const { migrate } = await import("../../src/server/db/client.ts");
+  migrate(db);
+
+  const indexMatches = (term) => db.prepare(`
+    SELECT COUNT(*) AS count FROM search_documents_fts WHERE search_documents_fts MATCH ?
+  `).get(term).count;
+  assert.equal(indexMatches('"Legacy"'), 3);
+  assert.equal(indexMatches('"visible"'), 1);
+  assert.equal(indexMatches('"provider-only"'), 0);
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, content, created_at)
+    VALUES ('future-message', 'task-conversation', 'assistant', 'Future visible body token',
+      '2026-10-16T10:01:00.000Z')
+  `).run();
+  assert.equal(indexMatches('"Future"'), 1);
 });
 
 test("stores trace-capable database files under owner-only directory and file permissions", (t) => {
@@ -99,7 +169,7 @@ test("upgrades version-one ownership and run data into current schema boundaries
   assert.deepEqual(
     db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()
       .map(({ version }) => version),
-    [1, 2, 3, 4, 5, 6],
+    [1, 2, 3, 4, 5, 6, 7],
   );
   assert.equal(
     db.prepare("SELECT contact_id AS contactId FROM conversations WHERE id = 'private-1'").get().contactId,
@@ -211,7 +281,7 @@ test("database migrations do not depend on the global URL constructor", async ()
     clientModule.migrate(db);
     assert.equal(
       db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version,
-      6,
+      7,
     );
   } finally {
     db.close();

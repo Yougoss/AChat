@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Contact } from "../server/domain/types.ts";
+import { SearchBox } from "./SearchBox.tsx";
 
 interface WorkspaceShellProps {
   activeContactId?: string;
@@ -88,6 +89,7 @@ export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProp
             <span>AChat<span className="brand-subtitle">dispatch desk</span></span>
           </Link>
         </div>
+        <SearchBox contactId={activeContactId} />
         <div className="roster-heading">
           <div>
             <p className="eyebrow">Roster</p>

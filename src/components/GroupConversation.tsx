@@ -118,6 +118,18 @@ export function GroupConversation({
     return () => source.close();
   }, [eventCursor, refresh, task.id]);
 
+  useEffect(() => {
+    const fragment = window.location.hash.slice(1);
+    if (!fragment) return;
+    let targetId = fragment;
+    try {
+      targetId = decodeURIComponent(fragment);
+    } catch {
+      targetId = fragment;
+    }
+    document.getElementById(targetId)?.scrollIntoView({ block: "center" });
+  }, [messages]);
+
   async function markRunsRead() {
     setError("");
     try {
@@ -181,7 +193,7 @@ export function GroupConversation({
         </div>
         <ol className="message-list group-message-list" aria-label={`${group.name} conversation`} aria-live="polite">
           {messages.map((message) => (
-            <li className={`message message-${message.role}`} key={message.id}>
+            <li className={`message message-${message.role}`} id={`message-${message.id}`} key={message.id}>
               <div className="group-message-heading">
                 <span className="message-role">{senderLabel(message, contacts)}</span>
                 {message.role === "handoff" ? (
