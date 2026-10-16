@@ -88,7 +88,7 @@ test("denial resolves the blocked action as denied and does not accept browser s
   assert.equal(await pendingAction, "denied");
 });
 
-test("rejects approval after its run becomes terminal without releasing the blocked tool", async (t) => {
+test("rejects stale run approval, denies its waiter, and closes persistent attention", async (t) => {
   const fixture = createExecutionFixture();
   t.after(() => fixture.db.close());
   const service = createApprovalService(fixture.db, { idFactory: () => "approval-stale-run" });
@@ -108,13 +108,19 @@ test("rejects approval after its run becomes terminal without releasing the bloc
     service.decideToolApproval("approval-stale-run", { decision: "approve" }),
     /stale/i,
   );
-  await Promise.resolve();
-  assert.equal(settled, false);
-  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-run").status, "pending");
-  void pendingAction;
+  assert.equal(await Promise.race([pendingAction, Promise.resolve("unsettled")]), "denied");
+  assert.equal(settled, true);
+  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-run").status, "denied");
+  assert.equal(createAttentionRepository(fixture.db)
+    .listAttentionRequestsForTask("task-1")
+    .find(({ approvalId }) => approvalId === "approval-stale-run").status, "resolved");
+  await assert.rejects(
+    service.decideToolApproval("approval-stale-run", { decision: "approve" }),
+    /stale|pending approval|not found/i,
+  );
 });
 
-test("rejects approval after its work item becomes terminal without releasing the blocked tool", async (t) => {
+test("rejects stale work-item approval, denies its waiter, and closes persistent attention", async (t) => {
   const fixture = createExecutionFixture();
   t.after(() => fixture.db.close());
   const service = createApprovalService(fixture.db, { idFactory: () => "approval-stale-work-item" });
@@ -134,10 +140,16 @@ test("rejects approval after its work item becomes terminal without releasing th
     service.decideToolApproval("approval-stale-work-item", { decision: "approve" }),
     /stale/i,
   );
-  await Promise.resolve();
-  assert.equal(settled, false);
-  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-work-item").status, "pending");
-  void pendingAction;
+  assert.equal(await Promise.race([pendingAction, Promise.resolve("unsettled")]), "denied");
+  assert.equal(settled, true);
+  assert.equal(createApprovalRepository(fixture.db).getApproval("approval-stale-work-item").status, "denied");
+  assert.equal(createAttentionRepository(fixture.db)
+    .listAttentionRequestsForTask("task-1")
+    .find(({ approvalId }) => approvalId === "approval-stale-work-item").status, "resolved");
+  await assert.rejects(
+    service.decideToolApproval("approval-stale-work-item", { decision: "approve" }),
+    /stale|pending approval|not found/i,
+  );
 });
 
 test("rejects mismatched server session scope and stale or already-decided IDs", async (t) => {

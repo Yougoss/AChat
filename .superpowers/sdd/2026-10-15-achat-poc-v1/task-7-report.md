@@ -77,3 +77,31 @@ After implementation, the focused regression command passed 10/10, and the disco
 | `npx tsc --noEmit` | Passed, exit code 0. |
 | `npm run build` | Passed; Next.js compiled, type-checked, generated pages, and reported the expected routes. |
 | `git diff --check` | Passed, no whitespace errors. |
+
+## Fix round 2
+
+Addressed the stale-decision recovery finding without changing migrations or the previously fixed all-start stuck evaluation, recursive test discovery, or deferred E2E fixture cleanup. When the decision transaction finds that its bound run/work item/session is no longer active, it now atomically marks the approval denied, resolves its attention request, and appends the decision event. After that transaction commits, it removes the in-memory waiter and resolves the blocked tool as denied, then returns the explicit stale error to the decision caller. A retry cannot treat the request as pending or succeed.
+
+### TDD evidence
+
+The focused approval-service and approval-extension tests were extended first to cover stale run and work-item termination, denied waiter completion, non-execution of the intercepted action, closed persistent approval/attention state, and unsuccessful retry.
+
+| Command | RED evidence |
+| --- | --- |
+| `node --experimental-strip-types --import ./.test-support/register-tsx-loader.mjs --test test/services/approval-service.test.mjs test/pi/approval-extension.integration.test.mjs` | Failed as expected: 4 passed, 3 failed. Both service tests received `unsettled` instead of `denied`; the extension test received `unsettled` instead of the blocked-tool result. These failures reproduced the unclosed waiter after an explicit stale error. |
+
+After implementation, that focused command passed all 7 tests. The service tests verify terminal run and work-item cases, denied persistence, resolved attention, and retry rejection; the extension integration test verifies that the action remains unexecuted and the tool completes only as denied.
+
+### Fix-round verification
+
+| Command | Result |
+| --- | --- |
+| Focused approval-service and approval-extension tests (command above) | Passed: 7 tests, 0 failures. |
+| `npm test` | Passed: 117 tests, 0 failures. |
+| `npx playwright test --config playwright.config.ts` | Passed: 1 E2E test. |
+| `npm run lint` | Passed, exit code 0. |
+| `npx tsc --noEmit` | Passed, exit code 0. |
+| `npm run build` | Passed; Next.js compiled, type-checked, generated pages, and reported the expected routes. |
+| `git diff --check` | Passed, no whitespace errors. |
+
+Generated build and Playwright artifacts were removed after validation; the pre-existing untracked `node_modules/` directory was preserved.

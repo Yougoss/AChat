@@ -194,24 +194,29 @@ export function createApprovalService(
       }
       const status = input.decision === "approve" ? "approved" : "denied";
       const decidedAt = now();
-      let resolved: Approval;
-      try {
-        resolved = db.transaction(() => {
+      let staleError: StaleApprovalError | undefined;
+      const resolved = db.transaction(() => {
+        try {
           assertScope(deferred.context, true);
-          const updated = approvals.updateApprovalStatus(approvalId, status, decidedAt);
+        } catch (error) {
+          if (!(error instanceof StaleApprovalError)) throw error;
+          staleError = error;
+          const denied = approvals.updateApprovalStatus(approvalId, "denied", decidedAt);
           attention.resolveAttentionRequest(`${approvalId}:attention`, "resolved");
-          appendApprovalEvent(updated, "approval.decided", { decidedAt });
-          return updated;
-        })();
-      } catch (error) {
-        if (error instanceof StaleApprovalError) {
-          waitState.pending.delete(approvalId);
-          waitState.activeToolCalls.delete(deferred.requestKey);
+          appendApprovalEvent(denied, "approval.decided", { decidedAt, stale: true });
+          return denied;
         }
-        throw error;
-      }
+        const updated = approvals.updateApprovalStatus(approvalId, status, decidedAt);
+        attention.resolveAttentionRequest(`${approvalId}:attention`, "resolved");
+        appendApprovalEvent(updated, "approval.decided", { decidedAt });
+        return updated;
+      })();
       waitState.pending.delete(approvalId);
       waitState.activeToolCalls.delete(deferred.requestKey);
+      if (staleError) {
+        deferred.resolve("denied");
+        throw staleError;
+      }
       deferred.resolve(status);
       return resolved;
     },
