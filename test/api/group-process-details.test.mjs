@@ -7,8 +7,9 @@ import { migrate, openDatabase } from "../../src/server/db/client.ts";
 import { createMessageRepository } from "../../src/server/db/repositories/message-repository.ts";
 import { createRunRepository } from "../../src/server/db/repositories/run-repository.ts";
 import { createWorkItemRepository } from "../../src/server/db/repositories/work-item-repository.ts";
+import { createEventRepository } from "../../src/server/db/repositories/event-repository.ts";
 
-test("group messages refresh returns run-keyed process summaries for the task conversation", async (t) => {
+test("group messages refresh returns process summaries without raw run event payloads", async (t) => {
   const previousDataDir = process.env.ACHAT_DATA_DIR;
   const dataDir = path.join(process.cwd(), ".test-support", `group-process-details-${process.pid}`);
   mkdirSync(dataDir, { recursive: true });
@@ -53,6 +54,19 @@ test("group messages refresh returns run-keyed process summaries for the task co
     status: "running",
     startedAt: "2026-10-16T10:00:00.000Z",
   });
+  createEventRepository(db).appendEvent({
+    id: "run-event-1",
+    entityType: "run",
+    entityId: "run-1",
+    type: "tool.completed",
+    payload: {
+      taskId: task.id,
+      eventSequence: 1,
+      toolOutput: "provider-secret-output",
+    },
+    idempotencyKey: "run-event-1",
+    createdAt: "2026-10-16T10:00:30.000Z",
+  });
   createMessageRepository(db).appendMessage({
     id: "assistant-1",
     conversationId: conversation.id,
@@ -73,4 +87,6 @@ test("group messages refresh returns run-keyed process summaries for the task co
   assert.equal(body.messages.find(({ id }) => id === "assistant-1").metadata.runId, "run-1");
   assert.deepEqual(body.processSummaries["run-1"], { messageCount: 1, models: [] });
   assert.deepEqual(Object.keys(body.processSummaries), ["run-1"]);
+  assert.equal(body.runs.find(({ id }) => id === "run-1").events, undefined);
+  assert.doesNotMatch(JSON.stringify(body), /provider-secret-output/);
 });

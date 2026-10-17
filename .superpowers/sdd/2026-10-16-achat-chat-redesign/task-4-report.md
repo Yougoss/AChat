@@ -34,3 +34,24 @@ The task-information disclosure starts closed to keep the chat focused. A handof
 ## Commit
 
 `feat: move task execution details into chat`
+
+## Task 4 review finding fix
+
+Removed the group messages GET route's run-event query, payload parsing, and `events` attachment from visible runs. Existing run rows and task execution status fields are unchanged, and process summaries continue to come from the scoped process-details service. Added a regression fixture with a sensitive tool-output sentinel and assertions that the response contains neither a run `events` field nor the raw payload.
+
+### Verification
+
+RED:
+
+- Command: `node --experimental-strip-types --import ./.test-support/register-tsx-loader.mjs --test test/api/group-process-details.test.mjs`
+- Output: `tests 1`, `pass 0`, `fail 1`; failed as expected because `body.runs[...].events` contained `provider-secret-output`.
+
+GREEN:
+
+- Command: `node --experimental-strip-types --import ./.test-support/register-tsx-loader.mjs --test test/api/group-process-details.test.mjs test/components/group-conversation.test.mjs test/components/task-status-panel.test.mjs`
+- Output: `tests 9`, `pass 9`, `fail 0`, `cancelled 0`, `skipped 0`, `todo 0`.
+- Test files: `test/api/group-process-details.test.mjs`, `test/components/group-conversation.test.mjs`, `test/components/task-status-panel.test.mjs`.
+- Command: `npm run typecheck`
+- Output: `tsc --noEmit` completed with exit code 0.
+- Command: `git diff --check`
+- Output: no errors; exit code 0.

@@ -53,22 +53,10 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
       WHERE runs.task_id = ?
       ORDER BY runs.started_at DESC, runs.id DESC
     `).all(task.id);
-    const events = db.prepare(`
-      SELECT id, entity_id AS runId, type, payload_json AS payload
-      FROM events
-      WHERE entity_type = 'run' AND json_extract(payload_json, '$.taskId') = ?
-      ORDER BY created_at, id
-    `).all(task.id).map((row) => {
-      const event = row as { id: string; runId: string; type: string; payload: string };
-      return { ...event, payload: JSON.parse(event.payload) as Record<string, unknown> };
-    });
     const taskStatus = createTaskStatusService(db);
     const visibleRuns = (runs as Array<{ id: string }>).map((run) => ({
       ...run,
       ...taskStatus.getRunExecutionStatus(run.id),
-      events: events.filter((event) => event.runId === run.id).sort(
-        (left, right) => Number(left.payload.eventSequence ?? 0) - Number(right.payload.eventSequence ?? 0),
-      ),
     }));
     const pendingAttentionCount = createAttentionRepository(db)
       .listAttentionRequestsForTask(task.id)
