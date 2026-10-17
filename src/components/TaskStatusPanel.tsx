@@ -68,7 +68,7 @@ export function TaskStatusPanel({
 
   return (
     <details className="task-information">
-      <summary>
+      <summary aria-label="Task information">
         <span>Task information</span>
         <span className="task-information-signals">
           {taskStatus} · {runs.length} {runs.length === 1 ? "run" : "runs"}

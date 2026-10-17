@@ -203,7 +203,7 @@ try {
 }
 
 const nextCli = path.join(projectRoot, "node_modules", "next", "dist", "bin", "next");
-const child = spawn(process.execPath, [nextCli, "dev", "-H", "127.0.0.1", "-p", "3010"], {
+const child = spawn(process.execPath, [nextCli, "dev", "--webpack", "-H", "127.0.0.1", "-p", "3010"], {
   cwd: projectRoot,
   env: {
     ...process.env,

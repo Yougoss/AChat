@@ -41,7 +41,7 @@ export default function ContactSettingsPage({
 
   return (
     <WorkspaceShell activeContactId={contactId || undefined}>
-      <main className="settings-page">
+      <main className="settings-page settings-contact-page">
         <header className="page-heading">
           <p className="eyebrow">Contact settings</p>
           <h1>{contact ? contact.name : "Loading contact…"}</h1>

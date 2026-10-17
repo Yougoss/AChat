@@ -51,7 +51,7 @@ export default function ProjectsSettingsPage() {
 
   return (
     <WorkspaceShell>
-      <main className="settings-page">
+      <main className="settings-page settings-projects-page">
         <header className="page-heading">
           <p className="eyebrow">Workspace registry</p>
           <h1>Registered projects</h1>

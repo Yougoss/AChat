@@ -93,3 +93,20 @@ test("discards pending search results when the active contact changes", async ()
     globalThis.fetch = originalFetch;
   }
 });
+
+test("announces the active search state to assistive technology", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Promise(() => {});
+  try {
+    render(React.createElement(SearchBox));
+    fireEvent.change(screen.getByLabelText("Search messages and tasks"), {
+      target: { value: "needle" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Search" }).closest("form"));
+
+    assert.equal(screen.getByRole("status").textContent, "Searching messages…");
+    assert.equal(screen.getByRole("region", { name: "Workspace search" }).getAttribute("aria-busy"), "true");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

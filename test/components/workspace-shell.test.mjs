@@ -139,5 +139,21 @@ test("renders the root route with a blank main pane and no setup instructions", 
     await screen.findByRole("link", { name: /Ada Lovelace/ });
     assert.equal(main.textContent, "");
     assert.doesNotMatch(document.body.textContent, /Start with a local project root|sign in to GitHub Copilot/);
+    assert.equal(screen.queryByRole("link", { name: "Back to conversations" }), null);
+  });
+});
+
+test("provides a return-to-list control when a conversation is active", async () => {
+  await withWorkspaceFetch(async () => {
+    render(provideRouter(React.createElement(
+      WorkspaceShell,
+      { activeContactId: "contact-ada" },
+      React.createElement("main", null, "Active conversation"),
+    )));
+
+    const backLink = await screen.findByRole("link", { name: "Back to conversations" });
+    assert.equal(backLink.getAttribute("href"), "/");
+    assert.equal(backLink.classList.contains("workspace-back-link"), true);
+    assert.ok(screen.getByText("Active conversation"));
   });
 });

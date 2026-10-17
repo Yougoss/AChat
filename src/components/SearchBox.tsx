@@ -85,7 +85,7 @@ export function SearchBox({ contactId }: SearchBoxProps) {
   }
 
   return (
-    <section className="workspace-search" aria-label="Workspace search">
+    <section className="workspace-search" aria-label="Workspace search" aria-busy={visibleState.busy}>
       <form role="search" onSubmit={(event) => void search(event)}>
         <label className="field-label" htmlFor="workspace-search-input">Search messages and tasks</label>
         <div className="workspace-search-controls">
@@ -101,6 +101,7 @@ export function SearchBox({ contactId }: SearchBoxProps) {
           </button>
         </div>
       </form>
+      {visibleState.busy ? <p className="search-status" role="status">Searching messages…</p> : null}
       {visibleState.error ? <p className="form-error" role="alert">{visibleState.error}</p> : null}
       {visibleState.searched && !visibleState.busy && !visibleState.error && !visibleState.results.length ? (
         <p className="search-empty" role="status">No matching messages or conversations.</p>

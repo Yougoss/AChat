@@ -505,8 +505,8 @@ h3 {
   min-height: 520px;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: #0c1517;
-  color: #e8f0ed;
+  background: var(--mineral-0);
+  color: var(--ink-0);
   padding: 24px 16px 16px;
 }
 
@@ -518,7 +518,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 11px;
-  color: #e8f0ed;
+  color: var(--ink-0);
   font-family: var(--font-display);
   font-size: 1.15rem;
   font-weight: 700;
@@ -530,15 +530,15 @@ h3 {
   width: 37px;
   height: 37px;
   place-items: center;
-  border: 1px solid #648d87;
+  border: 1px solid var(--teal-0);
   border-radius: 11px 11px 11px 3px;
-  color: #a9d3c7;
+  color: var(--teal-0);
   font-size: 1.35rem;
 }
 
 .brand-subtitle {
   display: block;
-  color: #99b4ae;
+  color: var(--ink-2);
   font-family: var(--font-mono);
   font-size: 0.62rem;
   font-weight: 400;
@@ -579,19 +579,19 @@ h3 {
 }
 
 .contact-rail .eyebrow {
-  color: #96c3b7;
+  color: var(--teal-0);
 }
 
 .workspace-search {
   margin: -16px 0 20px;
   padding: 12px;
-  border: 1px solid #354e4a;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #172a28;
+  background: var(--paper);
 }
 
 .workspace-search .field-label {
-  color: #d6e5df;
+  color: var(--ink-1);
   font-size: 0.76rem;
 }
 
@@ -603,9 +603,9 @@ h3 {
 
 .workspace-search input {
   min-width: 0;
-  border-color: #5b7770;
-  background: #102425;
-  color: #eef5f1;
+  border-color: var(--line);
+  background: var(--mineral-1);
+  color: var(--ink-0);
   font-size: 0.77rem;
   padding: 7px;
 }
@@ -629,22 +629,22 @@ h3 {
 .search-result-link {
   display: grid;
   gap: 3px;
-  border: 1px solid #354e4a;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  color: #eef5f1;
+  color: var(--ink-0);
   padding: 8px;
   text-decoration: none;
 }
 
 .search-result-link:hover,
 .search-result-link:focus-visible {
-  border-color: #8fb7aa;
-  background: #203936;
+  border-color: var(--teal-0);
+  background: var(--teal-1);
 }
 
 .search-result-kind,
 .search-result-count {
-  color: #a4c4ba;
+  color: var(--teal-0);
   font-family: var(--font-mono);
   font-size: 0.61rem;
   letter-spacing: 0.03em;
@@ -658,7 +658,7 @@ h3 {
 .search-result-preview {
   display: -webkit-box;
   overflow: hidden;
-  color: #c4d4ce;
+  color: var(--ink-1);
   font-size: 0.73rem;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -666,7 +666,13 @@ h3 {
 
 .search-empty {
   margin: 9px 0 0;
-  color: #c4d4ce;
+  color: var(--ink-1);
+  font-size: 0.76rem;
+}
+
+.search-status {
+  margin: 9px 0 0;
+  color: var(--ink-2);
   font-size: 0.76rem;
 }
 
@@ -815,23 +821,23 @@ h3 {
   display: grid;
   gap: 11px;
   overflow-y: auto;
-  border: 1px solid #436261;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #153334;
+  background: var(--paper);
   padding: 13px;
 }
 
 .contact-create-form .field-label {
-  color: #d7e6e1;
+  color: var(--ink-1);
   font-size: 0.78rem;
 }
 
 .contact-create-form input,
 .contact-create-form select,
 .contact-create-form textarea {
-  border-color: #436261;
-  background: #102b2c;
-  color: white;
+  border-color: var(--line);
+  background: var(--mineral-1);
+  color: var(--ink-0);
 }
 
 .rail-error {
@@ -842,24 +848,32 @@ h3 {
   display: grid;
   gap: 10px;
   margin-top: auto;
-  border-top: 1px solid #345150;
+  border-top: 1px solid var(--line);
   padding: 15px 7px 0;
 }
 
 .rail-footer a {
-  color: #c6ded5;
+  color: var(--ink-1);
   font-size: 0.82rem;
   text-decoration: none;
 }
 
 .rail-footer .evidence-meta {
-  color: #93aaa5;
+  color: var(--ink-2);
   line-height: 1.4;
 }
 
 .workspace-content {
   min-width: 0;
   padding: clamp(18px, 3vw, 42px);
+}
+
+.workspace-back-link {
+  display: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  text-decoration: none;
 }
 
 .empty-workspace {
@@ -1484,6 +1498,13 @@ textarea::placeholder {
   margin: 0 auto;
 }
 
+.settings-contact-page .model-selector,
+.settings-contact-page .auth-controls,
+.settings-projects-page .settings-card,
+.settings-projects-page .project-list {
+  background: var(--paper);
+}
+
 .settings-card h2,
 .project-list h2 {
   margin-bottom: 16px;
@@ -1676,6 +1697,10 @@ textarea::placeholder {
     display: block;
   }
 
+  .workspace-shell.has-active-conversation .contact-rail {
+    display: none;
+  }
+
   .contact-rail {
     position: static;
     height: auto;
@@ -1692,15 +1717,17 @@ textarea::placeholder {
   }
 
   .contact-roster {
-    display: flex;
-    max-height: 122px;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 8px;
+    display: grid;
+    max-height: min(52dvh, 520px);
+    gap: 5px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 3px 0 12px;
   }
 
   .contact-link {
-    min-width: 185px;
+    min-width: 0;
+    width: 100%;
   }
 
   .contact-create-form {
@@ -1722,6 +1749,16 @@ textarea::placeholder {
 
   .workspace-content {
     padding: 15px 12px 24px;
+  }
+
+  .workspace-shell.has-active-conversation .workspace-content {
+    padding-top: 10px;
+  }
+
+  .workspace-back-link {
+    display: inline-flex;
+    min-height: 44px;
+    margin-bottom: 8px;
   }
 
   .conversation-header {

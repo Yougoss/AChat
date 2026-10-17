@@ -106,9 +106,10 @@ export function WorkspaceShell({
   const visibleItems = items.filter((item) =>
     filter === "recent" || item.kind === filter);
   const activeId = activeContactId ?? activeGroupId;
+  const hasActiveConversation = Boolean(activeId);
 
   return (
-    <div className="workspace-shell">
+    <div className={`workspace-shell${hasActiveConversation ? " has-active-conversation" : ""}`}>
       <aside className="contact-rail" aria-label="Conversation navigation">
         <div className="rail-brand">
           <Link href="/" aria-label="AChat workspace home">
@@ -211,6 +212,12 @@ export function WorkspaceShell({
         {error ? <p className="form-error rail-error" role="alert">{error}</p> : null}
       </aside>
       <div className="workspace-content">
+        {hasActiveConversation ? (
+          <Link className="workspace-back-link button button-quiet" href="/">
+            <span aria-hidden="true">←</span>
+            Back to conversations
+          </Link>
+        ) : null}
         {children ?? (
           <main className="empty-workspace" aria-label="No conversation selected" />
         )}
