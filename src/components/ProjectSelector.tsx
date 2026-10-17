@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Project } from "../server/domain/types.ts";
 
 interface ProjectSelectorProps {
@@ -15,6 +16,18 @@ export function ProjectSelector({
   onChange,
   id = "registered-project",
 }: ProjectSelectorProps) {
+  if (!projects.length) {
+    return (
+      <div className="field-label project-selector-empty">
+        <span>Registered project</span>
+        <p>No projects are registered yet.</p>
+        <Link className="button button-quiet" href="/settings/projects">
+          Register a project
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <label className="field-label" htmlFor={id}>
       Registered project

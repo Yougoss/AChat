@@ -5,10 +5,12 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Contact } from "../server/domain/types.ts";
+import type { ConversationListItem } from "../server/services/conversation-list-service.ts";
 import { SearchBox } from "./SearchBox.tsx";
 
 interface WorkspaceShellProps {
   activeContactId?: string;
+  activeGroupId?: string;
   children?: React.ReactNode;
 }
 
@@ -18,34 +20,41 @@ interface ModelChoice {
   name: string;
 }
 
-export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProps) {
+type ConversationFilter = "recent" | "contact" | "task";
+
+export function WorkspaceShell({
+  activeContactId,
+  activeGroupId,
+  children,
+}: WorkspaceShellProps) {
   const router = useRouter();
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [items, setItems] = useState<ConversationListItem[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
+  const [filter, setFilter] = useState<ConversationFilter>("recent");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [modelId, setModelId] = useState("");
   const [error, setError] = useState("");
-  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [loadingConversations, setLoadingConversations] = useState(true);
 
   useEffect(() => {
     let active = true;
     void Promise.all([
-      fetch("/api/contacts").then((response) => response.json()),
+      fetch("/api/conversations").then((response) => response.json()),
       fetch("/api/models").then((response) => response.json()),
-    ]).then(([contactResult, modelResult]) => {
+    ]).then(([conversationResult, modelResult]) => {
       if (!active) return;
-      if (contactResult.error) throw new Error(contactResult.error);
+      if (conversationResult.error) throw new Error(conversationResult.error);
       if (modelResult.error) throw new Error(modelResult.error);
       const availableModels = modelResult.models ?? [];
-      setContacts(contactResult.contacts ?? []);
+      setItems(conversationResult.items ?? []);
       setModels(availableModels);
       setModelId((current) => current || availableModels[0]?.modelId || "");
     }).catch((cause: unknown) => {
-      if (active) setError(cause instanceof Error ? cause.message : "Unable to load contacts");
+      if (active) setError(cause instanceof Error ? cause.message : "Unable to load conversations");
     }).finally(() => {
-      if (active) setLoadingContacts(false);
+      if (active) setLoadingConversations(false);
     });
     return () => {
       active = false;
@@ -74,15 +83,33 @@ export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProp
       if (!response.ok || !result.contact) {
         throw new Error(result.error ?? "Unable to create contact");
       }
-      router.push(`/contacts/${encodeURIComponent(result.contact.id)}`);
+      const contact = result.contact;
+      setItems((current) => [
+        {
+          kind: "contact",
+          id: contact.id,
+          title: contact.name,
+          preview: "",
+          updatedAt: new Date().toISOString(),
+          href: `/contacts/${encodeURIComponent(contact.id)}`,
+          avatarText: contact.name.trim().slice(0, 1).toLocaleUpperCase() || "?",
+          unreadCount: 0,
+        },
+        ...current.filter((item) => !(item.kind === "contact" && item.id === contact.id)),
+      ]);
+      router.push(`/contacts/${encodeURIComponent(contact.id)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to create contact");
     }
   }
 
+  const visibleItems = items.filter((item) =>
+    filter === "recent" || item.kind === filter);
+  const activeId = activeContactId ?? activeGroupId;
+
   return (
     <div className="workspace-shell">
-      <aside className="contact-rail" aria-label="Contact navigation">
+      <aside className="contact-rail" aria-label="Conversation navigation">
         <div className="rail-brand">
           <Link href="/" aria-label="AChat workspace home">
             <span className="brand-mark" aria-hidden="true">A</span>
@@ -92,8 +119,8 @@ export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProp
         <SearchBox contactId={activeContactId} />
         <div className="roster-heading">
           <div>
-            <p className="eyebrow">Roster</p>
-            <h2>Contacts</h2>
+            <p className="eyebrow">Workspace</p>
+            <h2>Conversations</h2>
           </div>
           <button
             type="button"
@@ -104,26 +131,52 @@ export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProp
             {creating ? "×" : "+"}
           </button>
         </div>
-        <nav className="contact-roster" aria-label="Contact roster">
-          {loadingContacts ? <p className="roster-note">Loading contacts…</p> : null}
-          {!loadingContacts && !contacts.length ? (
+        <div className="conversation-filters" role="group" aria-label="Filter conversations">
+          {(["recent", "contact", "task"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+            >
+              {value === "recent" ? "Recent" : value === "contact" ? "Contacts" : "Tasks"}
+            </button>
+          ))}
+        </div>
+        <nav className="contact-roster" aria-label="Conversation list">
+          {loadingConversations ? <p className="roster-note">Loading conversations…</p> : null}
+          {!loadingConversations && !items.length ? (
             <p className="roster-note">No contacts yet. Add one to open a conversation.</p>
           ) : null}
-          {contacts.map((contact) => (
+          {!loadingConversations && items.length > 0 && !visibleItems.length ? (
+            <p className="roster-note">No conversations match this filter.</p>
+          ) : null}
+          {visibleItems.map((item) => {
+            const isActive = activeId === item.id
+              && ((item.kind === "contact" && activeContactId === item.id)
+                || (item.kind === "task" && activeGroupId === item.id));
+            return (
             <Link
-              className={`contact-link ${activeContactId === contact.id ? "is-active" : ""}`}
-              href={`/contacts/${encodeURIComponent(contact.id)}`}
-              key={contact.id}
-              aria-current={activeContactId === contact.id ? "page" : undefined}
+              className={`contact-link conversation-link ${isActive ? "is-active" : ""}`}
+              href={item.href}
+              key={`${item.kind}:${item.id}`}
+              aria-current={isActive ? "page" : undefined}
             >
-              <span className="contact-avatar" aria-hidden="true">{contact.name.slice(0, 1).toUpperCase()}</span>
-              <span className="contact-link-copy">
-                <strong>{contact.name}</strong>
-                <span>{contact.description || "Available for dispatch"}</span>
+              <span className={`contact-avatar ${item.kind === "task" ? "task-avatar" : ""}`} aria-hidden="true">
+                {item.avatarText}
               </span>
-              <span className="contact-presence" aria-label="Ready" />
+              <span className="contact-link-copy">
+                <strong>{item.title}</strong>
+                <span>{item.preview || (item.kind === "task" ? "No task messages yet" : "No messages yet")}</span>
+              </span>
+              {item.unreadCount > 0 ? (
+                <span className="conversation-unread" aria-label={`${item.unreadCount} unread`}>
+                  {item.unreadCount}
+                </span>
+              ) : null}
             </Link>
-          ))}
+            );
+          })}
         </nav>
         {creating ? (
           <form className="contact-create-form" onSubmit={(event) => void createContact(event)}>
@@ -156,21 +209,10 @@ export function WorkspaceShell({ activeContactId, children }: WorkspaceShellProp
           </form>
         ) : null}
         {error ? <p className="form-error rail-error" role="alert">{error}</p> : null}
-        <div className="rail-footer">
-          <Link href="/settings/projects">Registered projects</Link>
-          {activeContactId ? (
-            <Link href={`/settings/contacts/${encodeURIComponent(activeContactId)}`}>Active contact settings</Link>
-          ) : null}
-          <span className="evidence-meta">Local workspace · evidence stays scoped</span>
-        </div>
       </aside>
       <div className="workspace-content">
         {children ?? (
-          <main className="empty-workspace">
-            <p className="eyebrow">Dispatch workbench</p>
-            <h1>Select a contact to open the conversation.</h1>
-            <p>Choose a person from the roster or create a contact to begin.</p>
-          </main>
+          <main className="empty-workspace" aria-label="No conversation selected" />
         )}
       </div>
     </div>

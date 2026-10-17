@@ -89,7 +89,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
   const eventCursor = createEventRepository(db).getCurrentCursor();
 
   return (
-    <WorkspaceShell>
+    <WorkspaceShell activeGroupId={groupId}>
       <GroupConversation
         group={group}
         task={task}

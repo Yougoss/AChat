@@ -8,6 +8,12 @@ export async function resolve(specifier, context, nextResolve) {
       shortCircuit: true,
     };
   }
+  if (specifier === "next/navigation") {
+    return {
+      url: new URL("./next-navigation-mock.mjs", import.meta.url).href,
+      shortCircuit: true,
+    };
+  }
   return nextResolve(specifier, context);
 }
 
