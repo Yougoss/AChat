@@ -6,6 +6,7 @@ import { createExecutionFixture } from "./task-execution-fixtures.mjs";
 import { createWorkItemRepository } from "../../src/server/db/repositories/work-item-repository.ts";
 import { createRunRepository } from "../../src/server/db/repositories/run-repository.ts";
 import { createTraceQueryService } from "../../src/server/services/trace-query-service.ts";
+import { createProcessDetailsService } from "../../src/server/services/process-details-service.ts";
 import { createAppRuntime } from "../../src/server/app-runtime.ts";
 import { createDatabaseLifecycle } from "../../src/server/db/client.ts";
 import { createPiRuntimeLifecycle } from "../../src/server/pi/model-runtime.ts";
@@ -191,13 +192,19 @@ test("runs a handoff in the recipient's existing task session with durable run a
       { id: "developer", name: "Developer" },
       { id: "tester", name: "Tester" },
     ],
+    processSummaries: createProcessDetailsService(fixture.db)
+      .listGroupRunProcessSummaries(fixture.group.id),
   }));
   assert.match(markup, /@Developer/);
   assert.match(markup, /@Tester/);
   assert.match(markup, /Run the integration suite/);
   assert.match(markup, /completed/i);
   assert.match(markup, /The focused test passes/);
-  assert.match(markup, /tool.completed|read result/i);
+  assert.match(markup, /Process details/);
+  assert.match(markup, /Show process details/);
+  assert.match(markup, /Task information/);
+  assert.match(markup, /Run history/);
+  assert.doesNotMatch(markup, /The file is present/);
 });
 
 test("rejects blank task descriptions before run creation or session prompting", async (t) => {

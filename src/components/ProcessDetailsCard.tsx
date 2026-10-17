@@ -7,6 +7,7 @@ interface ProcessDetailsCardProps {
   summary: ProcessSummary;
   detailUrl: string;
   replyText: string;
+  handoffs?: Array<{ id: string; content: string }>;
 }
 
 function errorMessage(value: unknown): string {
@@ -59,7 +60,12 @@ function ProcessEventRow({ event }: { event: ProcessEvent }) {
   );
 }
 
-export function ProcessDetailsCard({ summary, detailUrl, replyText }: ProcessDetailsCardProps) {
+export function ProcessDetailsCard({
+  summary,
+  detailUrl,
+  replyText,
+  handoffs = [],
+}: ProcessDetailsCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [details, setDetails] = useState<ProcessDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,6 +116,16 @@ export function ProcessDetailsCard({ summary, detailUrl, replyText }: ProcessDet
           <span>{summary.messageCount} {summary.messageCount === 1 ? "message" : "messages"}</span>
           {summary.models.length ? <span>{summary.models.join(", ")}</span> : null}
         </div>
+        {handoffs.length ? (
+          <div className="process-handoff-context" aria-label="Structured handoffs">
+            {handoffs.map((handoff) => (
+              <div className="process-handoff" key={handoff.id}>
+                <span className="fragment-anchor" id={`message-${handoff.id}`} aria-hidden="true" />
+                <p>{handoff.content}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {usageMetrics.length ? (
           <ul className="process-usage" aria-label="Usage">
             {usageMetrics.map(([label, value]) => (

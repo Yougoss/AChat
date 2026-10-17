@@ -9,6 +9,7 @@ import { createUnreadRepository } from "../../../server/db/repositories/unread-r
 import { createAttentionRepository } from "../../../server/db/repositories/attention-repository.ts";
 import { createApprovalService } from "../../../server/services/approval-service.ts";
 import { createTaskStatusService } from "../../../server/services/task-status-service.ts";
+import { createProcessDetailsService } from "../../../server/services/process-details-service.ts";
 import { markGroupRunsRead } from "../../../server/services/message-service.ts";
 import { startAchatRuntime, getAchatDatabase } from "../../../server/runtime-bootstrap.ts";
 
@@ -26,6 +27,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
   const group = groups.getGroup(groupId);
   const task = groups.getTaskByGroupId(groupId);
   if (!group || !task) notFound();
+  const processSummaries = createProcessDetailsService(db).listGroupRunProcessSummaries(groupId);
   markGroupRunsRead(db, groupId);
   const memberIds = groups.listTaskMembers(task.id);
   const contacts = createAgentRepository(db).listContacts()
@@ -101,6 +103,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         pendingAttentionCount={pendingAttentionCount}
         approvals={approvals}
         eventCursor={eventCursor}
+        processSummaries={processSummaries}
       />
     </WorkspaceShell>
   );

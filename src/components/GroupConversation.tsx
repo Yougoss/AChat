@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Approval, Group, Message, Run, Task } from "../server/domain/types.ts";
-import { ApprovalCard } from "./ApprovalCard.tsx";
-import { RunProcessView } from "./RunProcessView.tsx";
+import type { ProcessSummary } from "../server/services/process-details-service.ts";
+import { ConversationTimeline, type TimelineHandoff, type TimelineMessage } from "./ConversationTimeline.tsx";
 import { TaskStatusPanel } from "./TaskStatusPanel.tsx";
 
 interface ContactLabel {
@@ -32,6 +32,7 @@ interface GroupConversationProps {
   pendingAttentionCount: number;
   approvals: Approval[];
   eventCursor: number;
+  processSummaries: Record<string, ProcessSummary>;
 }
 
 function senderLabel(message: Message, contacts: ContactLabel[]): string {
@@ -39,6 +40,67 @@ function senderLabel(message: Message, contacts: ContactLabel[]): string {
   const senderId = message.metadata?.fromContactId ?? message.metadata?.contactId;
   if (typeof senderId !== "string") return message.role;
   return contacts.find((contact) => contact.id === senderId)?.name ?? "Task member";
+}
+
+function conversationTimeline(
+  messages: Message[],
+  contacts: ContactLabel[],
+): TimelineMessage[] {
+  const lastAssistantByRun = new Map<string, string>();
+  const handoffsByRun = new Map<string, TimelineHandoff[]>();
+  const pairedHandoffs = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role === "assistant" && typeof message.metadata?.runId === "string") {
+      lastAssistantByRun.set(message.metadata.runId, message.id);
+    }
+  }
+  for (const message of messages) {
+    if (message.role !== "handoff" || typeof message.metadata?.sourceRunId !== "string") continue;
+    const sourceRunId = message.metadata.sourceRunId;
+    if (!lastAssistantByRun.has(sourceRunId)) continue;
+    const handoffs = handoffsByRun.get(sourceRunId) ?? [];
+    handoffs.push({ id: message.id, content: message.content });
+    handoffsByRun.set(sourceRunId, handoffs);
+    pairedHandoffs.add(message.id);
+  }
+
+  return messages.flatMap((message): TimelineMessage[] => {
+    if (message.role === "handoff") {
+      if (pairedHandoffs.has(message.id)) return [];
+      const fromId = message.metadata?.fromContactId;
+      const toId = message.metadata?.toContactId;
+      const from = typeof fromId === "string"
+        ? contacts.find((contact) => contact.id === fromId)?.name
+        : undefined;
+      const to = typeof toId === "string"
+        ? contacts.find((contact) => contact.id === toId)?.name
+        : undefined;
+      return [{
+        id: message.id,
+        role: "handoff",
+        content: message.content,
+        createdAt: message.createdAt,
+        senderLabel: `${from ?? "member"} → ${to ?? "member"}`,
+      }];
+    }
+
+    if (message.role !== "assistant") {
+      return [{ ...message, role: message.role === "user" ? "user" : "assistant" }];
+    }
+
+    const runId = typeof message.metadata?.runId === "string"
+      ? message.metadata.runId
+      : undefined;
+    const isLastAssistant = runId && lastAssistantByRun.get(runId) === message.id;
+    return [{
+      ...message,
+      role: "assistant",
+      senderLabel: senderLabel(message, contacts),
+      processSummaryId: isLastAssistant ? runId : undefined,
+      handoffs: isLastAssistant ? handoffsByRun.get(runId) : undefined,
+    }];
+  });
 }
 
 export function GroupConversation({
@@ -52,6 +114,7 @@ export function GroupConversation({
   pendingAttentionCount: initialPendingAttentionCount = 0,
   approvals: initialApprovals = [],
   eventCursor = 0,
+  processSummaries: initialProcessSummaries = {},
 }: GroupConversationProps) {
   const [messages, setMessages] = useState(initialMessages);
   const [runs, setRuns] = useState(initialRuns);
@@ -59,6 +122,7 @@ export function GroupConversation({
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [pendingAttentionCount, setPendingAttentionCount] = useState(initialPendingAttentionCount);
   const [approvals, setApprovals] = useState(initialApprovals);
+  const [processSummaries, setProcessSummaries] = useState(initialProcessSummaries);
   const [content, setContent] = useState("");
   const [taskDescription, setTaskDescription] = useState(task.description);
   const [descriptionDraft, setDescriptionDraft] = useState(task.description);
@@ -77,6 +141,7 @@ export function GroupConversation({
       unreadCount?: number;
       pendingAttentionCount?: number;
       approvals?: Approval[];
+      processSummaries?: Record<string, ProcessSummary>;
       error?: string;
     };
     if (!response.ok) throw new Error(result.error ?? "Unable to refresh task activity");
@@ -86,6 +151,7 @@ export function GroupConversation({
     setUnreadCount(result.unreadCount ?? 0);
     setPendingAttentionCount(result.pendingAttentionCount ?? 0);
     setApprovals(result.approvals ?? []);
+    setProcessSummaries(result.processSummaries ?? {});
   }, [group.id, initialTaskStatus]);
 
   useEffect(() => {
@@ -266,58 +332,30 @@ export function GroupConversation({
             </span>
           ))}
         </div>
-        <ol className="message-list group-message-list" aria-label={`${group.name} conversation`} aria-live="polite">
-          {messages.map((message) => (
-            <li className={`message message-${message.role}`} id={`message-${message.id}`} key={message.id}>
-              <div className="group-message-heading">
-                <span className="message-role">{senderLabel(message, contacts)}</span>
-                {message.role === "handoff" ? (
-                  <span className="handoff-route" aria-label="Structured handoff">
-                    @{contacts.find((contact) => contact.id === String(message.metadata?.fromContactId))?.name ?? "member"}
-                    {" → "}
-                    @{contacts.find((contact) => contact.id === String(message.metadata?.toContactId))?.name ?? "member"}
-                  </span>
-                ) : null}
-              </div>
-              <p>{message.content}</p>
-              <time className="evidence-meta" dateTime={message.createdAt}>
-                {new Date(message.createdAt).toLocaleString()}
-              </time>
-            </li>
-          ))}
-          {!messages.length ? (
-            <li className="conversation-empty">
+        <TaskStatusPanel
+          taskId={task.id}
+          taskStatus={taskStatus}
+          runs={runs}
+          unreadCount={unreadCount}
+          pendingAttentionCount={pendingAttentionCount}
+          approvals={approvals}
+          onMarkRunsRead={() => void markRunsRead()}
+          onRefresh={refresh}
+        />
+        <ConversationTimeline
+          messages={conversationTimeline(messages, contacts)}
+          senderLabels={{ user: "You", assistant: "Task member" }}
+          processSummaries={processSummaries}
+          processDetailsUrl={(runId) =>
+            `/api/groups/${encodeURIComponent(group.id)}/runs/${encodeURIComponent(runId)}/process`}
+          ariaLabel={`${group.name} conversation`}
+          emptyState={
+            <>
               <p>Start the task conversation by explicitly mentioning a member.</p>
               <p className="evidence-meta">Only @contact and @all messages create work.</p>
-            </li>
-          ) : null}
-        </ol>
-        <section className="approval-section" aria-labelledby="approval-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Action gate</p>
-              <h2 id="approval-title">Approvals</h2>
-            </div>
-            {unreadCount > 0 ? (
-              <button className="button button-quiet" type="button" onClick={() => void markRunsRead()}>
-                Mark runs read
-              </button>
-            ) : null}
-          </div>
-          {!approvals.length ? (
-            <p className="approval-empty">No actions are waiting for approval.</p>
-          ) : (
-            <div className="approval-list">
-              {approvals.map((approval) => (
-                <ApprovalCard
-                  approval={approval}
-                  key={approval.id}
-                  onDecided={() => void refresh()}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+            </>
+          }
+        />
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`group-message-${group.id}`}>Message task members</label>
           <textarea
@@ -337,17 +375,6 @@ export function GroupConversation({
         </form>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </section>
-      <div className="group-status-column">
-        <TaskStatusPanel
-          taskId={task.id}
-          taskStatus={taskStatus}
-          runs={runs}
-          unreadCount={unreadCount}
-          pendingAttentionCount={pendingAttentionCount}
-          onRetryComplete={refresh}
-        />
-        <RunProcessView runs={runs} />
-      </div>
     </main>
   );
 }

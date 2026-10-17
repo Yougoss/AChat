@@ -5,11 +5,22 @@ import type { Message } from "../server/domain/types.ts";
 import type { ProcessSummary } from "../server/services/process-details-service.ts";
 import { ProcessDetailsCard } from "./ProcessDetailsCard.tsx";
 
+export interface TimelineHandoff {
+  id: string;
+  content: string;
+}
+
+export interface TimelineMessage extends Pick<Message, "id" | "role" | "content" | "createdAt"> {
+  senderLabel?: string;
+  processSummaryId?: string;
+  handoffs?: TimelineHandoff[];
+}
+
 interface ConversationTimelineProps {
-  messages: Pick<Message, "id" | "role" | "content" | "createdAt">[];
+  messages: TimelineMessage[];
   senderLabels: { user: string; assistant: string };
   processSummaries?: Record<string, ProcessSummary>;
-  processDetailsUrl?: (messageId: string) => string;
+  processDetailsUrl?: (summaryId: string) => string;
   ariaLabel?: string;
   emptyState?: ReactNode;
 }
@@ -48,7 +59,11 @@ export function ConversationTimeline({
     <ol className="message-list" aria-label={ariaLabel} aria-live="polite">
       {messages.map((message, index) => {
         const isUser = message.role === "user";
-        const senderLabel = isUser ? senderLabels.user : senderLabels.assistant;
+        const senderLabel = isUser
+          ? senderLabels.user
+          : message.senderLabel ?? (message.role === "handoff" ? "Handoff" : senderLabels.assistant);
+        const processSummaryId = message.processSummaryId ?? message.id;
+        const processSummary = processSummaries[processSummaryId];
         const currentDate = new Date(message.createdAt);
         const previousDate = index > 0 ? new Date(messages[index - 1].createdAt) : undefined;
         const hasValidDate = Number.isFinite(currentDate.getTime());
@@ -75,7 +90,7 @@ export function ConversationTimeline({
               </time>
             ) : null}
             <article
-              className={`message message-${isUser ? "user" : "assistant"}`}
+              className={`message message-${message.role}`}
               id={`message-${message.id}`}
               aria-label={`${senderLabel} message`}
             >
@@ -85,12 +100,23 @@ export function ConversationTimeline({
               <div className="message-content">
                 <span className="message-role">{senderLabel}</span>
                 <p>{message.content}</p>
-                {!isUser && processSummaries[message.id] && processDetailsUrl ? (
+                {!isUser && processSummary && processDetailsUrl ? (
                   <ProcessDetailsCard
-                    summary={processSummaries[message.id]}
-                    detailUrl={processDetailsUrl(message.id)}
+                    summary={processSummary}
+                    detailUrl={processDetailsUrl(processSummaryId)}
                     replyText={message.content}
+                    handoffs={message.handoffs}
                   />
+                ) : null}
+                {!isUser && message.handoffs?.length && !(processSummary && processDetailsUrl) ? (
+                  <div className="message-handoff-context" aria-label="Structured handoffs">
+                    {message.handoffs.map((handoff) => (
+                      <div className="process-handoff" key={handoff.id}>
+                        <span className="fragment-anchor" id={`message-${handoff.id}`} aria-hidden="true" />
+                        <p>{handoff.content}</p>
+                      </div>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             </article>

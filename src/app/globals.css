@@ -103,14 +103,13 @@ h3 {
 .group-workspace {
   display: grid;
   width: min(1500px, 100%);
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: 20px;
   padding: clamp(18px, 3vw, 40px);
 }
 
-.group-conversation-panel,
-.run-process-panel {
+.group-conversation-panel {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -156,13 +155,11 @@ h3 {
   font-size: 0.72rem;
 }
 
-.group-message-list {
-  max-height: min(54vh, 680px);
-  overflow-y: auto;
-  padding: 18px 2px;
+.group-conversation-panel .message-list {
+  max-height: min(58vh, 760px);
+  padding: 18px;
 }
 
-.group-message-heading,
 .run-card-heading,
 .run-metadata {
   display: flex;
@@ -171,40 +168,67 @@ h3 {
   gap: 12px;
 }
 
-.handoff-route {
-  color: var(--coral-0);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-
 .message-handoff {
   border-color: #77514b;
   background: var(--coral-1);
-}
-
-.message-handoff .message-role {
-  color: var(--ink-0);
 }
 
 .group-conversation-panel .message-composer {
   margin-top: 4px;
 }
 
-.group-status-column {
-  display: grid;
-  align-content: start;
-  gap: 16px;
+.task-information {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
 }
 
-.task-status-panel,
-.run-process-panel {
+.task-information > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 48px;
+  padding: 11px 16px;
+  color: var(--ink-0);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.task-information > summary:focus-visible {
+  outline: 2px solid var(--teal-0);
+  outline-offset: 3px;
+}
+
+.task-information-signals {
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 550;
+}
+
+.task-information-body {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding: 14px;
+}
+
+.task-information-body > .task-status-panel,
+.task-information-body > .run-process-panel {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--paper);
   box-shadow: var(--shadow-card);
   padding: 19px;
+}
+
+.task-mark-read {
+  margin-top: 12px;
 }
 
 .task-status-panel .section-heading,
@@ -386,11 +410,6 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.run-process-panel {
-  position: sticky;
-  top: 20px;
 }
 
 .run-process-panel .section-heading {
@@ -1042,6 +1061,35 @@ h3 {
   text-transform: uppercase;
 }
 
+.message-handoff .message-role {
+  color: var(--coral-0);
+}
+
+.message-handoff-context {
+  margin-top: 10px;
+  border-left: 3px solid var(--coral-0);
+  padding-left: 10px;
+}
+
+.process-handoff {
+  position: relative;
+  border-left: 3px solid var(--coral-0);
+  background: var(--coral-1);
+  padding: 5px 9px;
+  color: var(--ink-1);
+  font-size: 0.76rem;
+}
+
+.process-handoff p {
+  margin: 0;
+}
+
+.fragment-anchor {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}
+
 .process-details-card {
   margin-top: 12px;
   overflow: hidden;
@@ -1054,6 +1102,11 @@ h3 {
   display: grid;
   gap: 10px;
   padding: 11px;
+}
+
+.process-details-summary .process-handoff-context {
+  display: grid;
+  gap: 6px;
 }
 
 .process-summary-copy,
@@ -1614,7 +1667,8 @@ textarea::placeholder {
   }
 
   .group-conversation-panel,
-  .run-process-panel {
+  .task-information-body > .task-status-panel,
+  .task-information-body > .run-process-panel {
     padding: 15px;
   }
 
