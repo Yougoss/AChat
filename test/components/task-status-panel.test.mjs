@@ -69,7 +69,9 @@ test("opens task information to expose task, run and approval state and allow ap
     const disclosure = document.querySelector("details");
     assert.ok(disclosure);
     assert.equal(disclosure.open, false);
-    assert.equal(disclosure.querySelector("summary").getAttribute("aria-label"), "Task information");
+    const summary = disclosure.querySelector("summary");
+    assert.match(summary.textContent, /Task information.*open.*1 run.*2 unread.*1 waiting/);
+    assert.equal(summary.hasAttribute("aria-label"), false);
     fireEvent.click(screen.getByText("Task information"));
 
     assert.equal(disclosure.open, true);

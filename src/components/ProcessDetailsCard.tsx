@@ -132,7 +132,7 @@ export function ProcessDetailsCard({
               <li key={label}><span>{label}</span> <strong>{value}</strong></li>
             ))}
           </ul>
-        ) : null}
+        ) : <p className="process-usage-unavailable">Usage unavailable</p>}
         <button
           type="button"
           className="process-details-toggle"

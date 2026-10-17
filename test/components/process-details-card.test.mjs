@@ -119,10 +119,28 @@ test("shows an error and retries a failed lazy detail request", async () => {
   assert.equal(attempts, 2);
 });
 
-test("does not synthesize unavailable usage metrics", () => {
+test("shows an explicit unavailable state when no usage was captured", () => {
   render(card({ summary: { messageCount: 1, models: ["model-a"] } }));
 
+  assert.equal(screen.getByText("Usage unavailable").textContent, "Usage unavailable");
   assert.doesNotMatch(document.body.textContent, /input\s*0|output\s*0|cache\s*0|cost\s*0/i);
+});
+
+test("shows only the available usage fields when usage is partial", () => {
+  render(card({
+    summary: {
+      messageCount: 1,
+      models: ["model-a"],
+      usage: { input: 12, cacheRead: 4 },
+    },
+  }));
+
+  const usage = document.querySelector(".process-usage");
+  assert.ok(usage);
+  assert.match(usage.textContent, /Input\s*12/);
+  assert.match(usage.textContent, /Cache read\s*4/);
+  assert.doesNotMatch(usage.textContent, /Output|Cache write|Cost/);
+  assert.equal(screen.queryByText("Usage unavailable"), null);
 });
 
 test("keeps long tool output in a secondary disclosure and preserves the exact reply", async () => {

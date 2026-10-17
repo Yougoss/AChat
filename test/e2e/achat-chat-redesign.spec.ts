@@ -107,7 +107,8 @@ test("root, mobile list return, and task information remain accessible", async (
   await page.getByRole("link", { name: /Feature/ }).click();
   const taskInformation = page.locator(".task-information > summary");
   await expect(taskInformation).toBeVisible();
-  await expect(taskInformation).toHaveAttribute("aria-label", "Task information");
+  await expect(taskInformation).not.toHaveAttribute("aria-label");
+  await expect(taskInformation).toHaveAccessibleName(/Task information/);
   await backLink.focus();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Add task description" })).toBeFocused();
