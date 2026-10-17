@@ -151,3 +151,74 @@ test("switching contact reloads its conversation and sends to the new contact", 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("renders fetched process summaries and uses the same 我 avatar for outgoing messages", async () => {
+  const originalFetch = globalThis.fetch;
+  const processSummary = { messageCount: 2, models: ["model-a"], usage: { input: 15 } };
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a") {
+      return jsonResponse({ contact: contact("contact-a", "Contact A") });
+    }
+    if (url === "/api/contacts/contact-a/sessions?") return jsonResponse({ items: [] });
+    if (url === "/api/contacts/contact-a/messages" && init.method === "POST") {
+      return jsonResponse({
+        exchange: {
+          userMessage: {
+            id: "sent-user",
+            role: "user",
+            content: "Follow-up",
+            createdAt: "2026-10-16T10:06:00.000Z",
+          },
+          assistantMessage: {
+            id: "sent-reply",
+            role: "assistant",
+            content: "Second exact reply",
+            createdAt: "2026-10-16T10:06:01.000Z",
+          },
+        },
+        processSummaries: { "sent-reply": processSummary },
+      }, 201);
+    }
+    if (url === "/api/contacts/contact-a/messages") {
+      return jsonResponse({
+        messages: [
+          {
+            id: "first-user",
+            role: "user",
+            content: "First message",
+            createdAt: "2026-10-16T10:00:00.000Z",
+          },
+          {
+            id: "first-reply",
+            role: "assistant",
+            content: "First exact reply",
+            createdAt: "2026-10-16T10:00:01.000Z",
+          },
+        ],
+        processSummaries: { "first-reply": processSummary },
+      });
+    }
+    throw new Error(`Unexpected request: ${init.method ?? "GET"} ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, { contactId: "contact-a" }));
+    await screen.findByText("First exact reply");
+    assert.equal(screen.getAllByRole("button", { name: /process details/i }).length, 1);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Contact A" }), {
+      target: { value: "Follow-up" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send message" }).closest("form"));
+    await screen.findByText("Second exact reply");
+
+    const avatars = document.querySelectorAll(".message-user .message-avatar");
+    assert.deepEqual([...avatars].map((avatar) => avatar.textContent), ["我", "我"]);
+    assert.equal(screen.getAllByRole("button", { name: /process details/i }).length, 2);
+    assert.equal(screen.getByText("First exact reply").textContent, "First exact reply");
+    assert.equal(screen.getByText("Second exact reply").textContent, "Second exact reply");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

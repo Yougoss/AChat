@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import type { Contact, Group, Message, Project } from "../server/domain/types.ts";
+import type { ProcessSummary } from "../server/services/process-details-service.ts";
 import { ContactSessionResults } from "./ContactSessionResults.tsx";
+import { ConversationTimeline } from "./ConversationTimeline.tsx";
 import { ProjectSelector } from "./ProjectSelector.tsx";
 
 interface ContactChatProps {
@@ -51,6 +53,7 @@ function ContactChatSession({
   const [messages, setMessages] = useState(
     initialContact?.id === contactId ? initialMessages ?? [] : [],
   );
+  const [processSummaries, setProcessSummaries] = useState<Record<string, ProcessSummary>>({});
   const [content, setContent] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -83,8 +86,10 @@ function ContactChatSession({
     ]).then(([contactResult, messageResult]) => {
       if (!active) return;
       if (contactResult.error) throw new Error(contactResult.error);
+      if (messageResult.error) throw new Error(messageResult.error);
       setContact(contactResult.contact);
       setMessages(messageResult.messages ?? []);
+      setProcessSummaries(messageResult.processSummaries ?? {});
     }).catch((cause: unknown) => {
       if (active) setError(readableError(cause, "Unable to load this contact conversation"));
     });
@@ -119,6 +124,7 @@ function ContactChatSession({
       });
       const result = await response.json() as {
         exchange?: { userMessage: Message; assistantMessage: Message };
+        processSummaries?: Record<string, ProcessSummary>;
         error?: string;
       };
       if (!mounted.current) return;
@@ -126,6 +132,7 @@ function ContactChatSession({
         throw new Error(result.error ?? "Unable to send message");
       }
       setMessages((existing) => [...existing, result.exchange!.userMessage, result.exchange!.assistantMessage]);
+      setProcessSummaries((existing) => ({ ...existing, ...result.processSummaries }));
       setContent("");
     } catch (cause) {
       if (mounted.current) setError(readableError(cause, "Unable to send message"));
@@ -228,23 +235,20 @@ function ContactChatSession({
             Contact settings
           </Link>
         </header>
-        <ol className="message-list" aria-label={`${visibleContact.name} conversation`} aria-live="polite">
-          {messages.map((message) => (
-            <li className={`message message-${message.role}`} id={`message-${message.id}`} key={message.id}>
-              <span className="message-role">{message.role === "assistant" ? visibleContact.name : "You"}</span>
-              <p>{message.content}</p>
-              <time className="evidence-meta" dateTime={message.createdAt}>
-                {new Date(message.createdAt).toLocaleString()}
-              </time>
-            </li>
-          ))}
-          {!messages.length ? (
-            <li className="conversation-empty">
+        <ConversationTimeline
+          messages={messages}
+          senderLabels={{ user: "You", assistant: visibleContact.name }}
+          processSummaries={processSummaries}
+          processDetailsUrl={(messageId) =>
+            `/api/contacts/${encodeURIComponent(visibleContact.id)}/messages/${encodeURIComponent(messageId)}/process`}
+          ariaLabel={`${visibleContact.name} conversation`}
+          emptyState={
+            <>
               <p>Start a private conversation with {visibleContact.name}.</p>
               <p className="evidence-meta">Messages and replies stay in this contact’s conversation.</p>
-            </li>
-          ) : null}
-        </ol>
+            </>
+          }
+        />
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`contact-message-input-${visibleContact.id}`}>Message {visibleContact.name}</label>
           <textarea
