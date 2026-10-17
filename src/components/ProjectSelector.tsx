@@ -29,21 +29,26 @@ export function ProjectSelector({
   }
 
   return (
-    <label className="field-label" htmlFor={id}>
-      Registered project
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        required
-      >
-        <option value="">Choose a registered project</option>
-        {projects.map((project) => (
-          <option key={project.id} value={project.id}>
-            {project.name} — {project.rootPath}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <label className="field-label" htmlFor={id}>
+        Registered project
+        <select
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          required
+        >
+          <option value="">Choose a registered project</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name} — {project.rootPath}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Link className="button button-quiet" href="/settings/projects">
+        Register another project
+      </Link>
+    </>
   );
 }

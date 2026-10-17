@@ -31,3 +31,19 @@ test("links to project registration from task selection when no projects are reg
   assert.match(html, /href="\/settings\/projects"/);
   assert.doesNotMatch(html, /Choose a registered project/);
 });
+
+test("keeps project registration available after a project is selected", () => {
+  const html = renderToStaticMarkup(React.createElement(ProjectSelector, {
+    projects: [{
+      id: "registered-project",
+      name: "AChat",
+      rootPath: "/work/achat",
+    }],
+    value: "registered-project",
+    onChange() {},
+  }));
+
+  assert.match(html, /Register another project/);
+  assert.match(html, /href="\/settings\/projects"/);
+  assert.match(html, /AChat — \/work\/achat/);
+});

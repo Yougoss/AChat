@@ -126,3 +126,27 @@ Exact result:
 The existing schema has no private-chat unread cursor for the human workspace, so private contact items report `unreadCount: 0`; task unread counts use the persisted group run-completion cursor. If private unread badges are desired, add an explicit read-state contract before assigning a nonzero meaning.
 
 The local POC has no authenticated human/actor identity in the list endpoint. The service therefore filters out tasks with no `task_members` and only returns task conversation previews from the route-selected conversation, but it cannot enforce a per-human membership check that the existing route contract does not identify. This is consistent with the current local operator model; before exposing the endpoint to multiple human users, add an authenticated actor scope and filter tasks to that actor’s membership.
+
+## Review fix — retain project registration in task selection
+
+The review found that the selector only linked to project settings when no projects were registered, leaving no registration path in task selection after the first project was added. Added a regression test requiring the populated selector to show a `Register another project` link to `/settings/projects`, then added that link directly after the project select. The existing empty-state link and sidebar behavior are unchanged.
+
+### RED/GREEN evidence
+
+Before the implementation change:
+
+```text
+node --experimental-strip-types --import ./.test-support/register-tsx-loader.mjs --test test/components/project-selector.test.mjs
+```
+
+Result: **2 passed, 1 failed**. The new `keeps project registration available after a project is selected` test failed as expected because the rendered populated selector had no `Register another project` link.
+
+After the implementation change, the same focused command reported **3 passed, 0 failed**, including both the existing empty-state registration test and the new populated-selector regression test.
+
+### Verification
+
+- Focused project selector tests — **3 passed, 0 failed**.
+- `npm test` — **169 passed, 0 failed**.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `git diff --check` — passed.
