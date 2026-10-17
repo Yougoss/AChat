@@ -414,13 +414,43 @@ test("sanitizes credential-shaped tool output without hiding the remainder of lo
   t.after(() => fixture.db.close());
   const { db, sourceRun, sourceMapping } = fixture;
   const trace = createTraceExtension(db);
+  const argumentCredential = "OPENAI_API_KEY=argument-secret-value";
+  const resultCredential = "OPENAI_API_KEY=result-secret-value";
+  const additionalCredentials = [
+    "GITHUB_TOKEN=token-secret",
+    "SERVICE_SECRET=secret-value",
+    "DB_PASSWORD=password-value",
+    "AUTHORIZATION=authorization-value",
+  ];
   const longOutput = `Bearer private-token-123 ${"x".repeat(12000)} ?api_key=private-key-456`;
   await trace.recordProviderRequest(sourceMapping, "provider-call", { prompt: "do not expose provider request" });
+  await traceRunEvent(trace, sourceMapping, {
+    eventId: "sensitive-tool-start",
+    type: "tool.started",
+    eventSequence: 0,
+    callId: "provider-call",
+    toolCallId: "tool-call-sensitive",
+    payload: {
+      toolName: "shell",
+      args: { command: `ordinary tool invocation; ${argumentCredential}; echo ready` },
+    },
+  });
+  appendRunEvent(db, {
+    id: "sensitive-tool-start",
+    type: "tool.started",
+    eventSequence: 0,
+    createdAt: "2026-10-16T02:00:00.000Z",
+    payload: {
+      toolName: "shell",
+      toolCallId: "tool-call-sensitive",
+      args: { command: `ordinary tool invocation; ${argumentCredential}; echo ready` },
+    },
+  });
   await trace.recordSessionEvent(sourceMapping, {
     type: "tool_execution_end",
     toolName: "shell",
     toolCallId: "tool-call-sensitive",
-    result: { text: longOutput, apiKey: "private-key-field" },
+    result: { text: [longOutput, resultCredential, ...additionalCredentials, "ordinary tool output"].join("; "), apiKey: "private-key-field" },
     isError: false,
   });
   await traceRunEvent(trace, sourceMapping, {
@@ -429,7 +459,7 @@ test("sanitizes credential-shaped tool output without hiding the remainder of lo
     eventSequence: 1,
     callId: "provider-call",
     toolCallId: "tool-call-sensitive",
-    payload: { toolName: "shell", result: { text: longOutput, apiKey: "private-key-field" }, isError: false },
+    payload: { toolName: "shell", result: { text: [longOutput, resultCredential, ...additionalCredentials, "ordinary tool output"].join("; "), apiKey: "private-key-field" }, isError: false },
   });
   appendRunEvent(db, {
     id: "sensitive-tool-end",
@@ -439,15 +469,23 @@ test("sanitizes credential-shaped tool output without hiding the remainder of lo
     payload: {
       toolName: "shell",
       toolCallId: "tool-call-sensitive",
-      result: { text: longOutput, apiKey: "private-key-field" },
+      result: { text: [longOutput, resultCredential, ...additionalCredentials, "ordinary tool output"].join("; "), apiKey: "private-key-field" },
       isError: false,
     },
   });
 
   const details = await createProcessDetailsService(db)
     .getGroupRunProcessDetails("group-1", sourceRun.id);
+  const argumentDetail = details.events.find(({ kind, detail }) =>
+    kind === "tool_call" && detail.includes("ordinary tool invocation"))?.detail;
   const detail = details.events.find(({ kind }) => kind === "tool_result").detail;
 
+  assert.equal(argumentDetail?.includes(argumentCredential), false);
+  assert.equal(argumentDetail?.includes("ordinary tool invocation"), true);
+  assert.equal(argumentDetail?.includes("echo ready"), true);
+  assert.equal(detail.includes(resultCredential), false);
+  assert.equal(additionalCredentials.some((credential) => detail.includes(credential)), false);
+  assert.equal(detail.includes("ordinary tool output"), true);
   assert.ok(detail.length > 12_000);
   assert.ok(detail.includes("x".repeat(12_000)));
   assert.match(detail, /\[REDACTED\]/);

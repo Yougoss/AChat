@@ -23,6 +23,30 @@ interface MessageServiceOptions {
   now?: () => string;
 }
 
+const contactMessageQueues = new Map<string, Promise<void>>();
+
+async function withContactMessageQueue<T>(
+  contactId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = contactMessageQueues.get(contactId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => current);
+  contactMessageQueues.set(contactId, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (contactMessageQueues.get(contactId) === queued) {
+      contactMessageQueues.delete(contactId);
+    }
+  }
+}
+
 function assistantText(message: AgentMessage | undefined): string {
   if (!message || message.role !== "assistant") return "";
   if (typeof message.content === "string") return message.content;
@@ -93,46 +117,48 @@ export function createContactMessageService(
     ): Promise<{ userMessage: Message; assistantMessage: Message }> {
       const content = input.content.trim();
       if (!content) throw new Error("Contact message cannot be empty");
-      const session = await openSession(contactId, { sessionKind: "contact_chat" });
-      const previousMessageCount = session.messages.length;
-      const conversationId = privateConversationId(db, contactId, idFactory);
-      const traceStart = traceBoundary(db, contactId, conversationId);
-      const userMessage = messages.appendMessage({
-        id: idFactory(),
-        conversationId,
-        role: "user",
-        content,
-        createdAt: now(),
-      });
+      return withContactMessageQueue(contactId, async () => {
+        const session = await openSession(contactId, { sessionKind: "contact_chat" });
+        const previousMessageCount = session.messages.length;
+        const conversationId = privateConversationId(db, contactId, idFactory);
+        const traceStart = traceBoundary(db, contactId, conversationId);
+        const userMessage = messages.appendMessage({
+          id: idFactory(),
+          conversationId,
+          role: "user",
+          content,
+          createdAt: now(),
+        });
 
-      await session.prompt(content);
-      const response = assistantText(session.messages.slice(previousMessageCount).reverse().find(
-        (message) => message.role === "assistant",
-      ));
-      if (!response.trim()) {
-        throw new Error("Contact session did not return an assistant message");
-      }
-      const throughSequence = traceStart
-        ? traceSequence(db, traceStart.mappingId)
-        : undefined;
-      const assistantMessage = messages.appendMessage({
-        id: idFactory(),
-        conversationId,
-        role: "assistant",
-        content: response,
-        ...(traceStart && throughSequence !== undefined
-          ? {
-              metadata: {
-                processTraceRange: {
-                  afterSequence: traceStart.afterSequence,
-                  throughSequence,
+        await session.prompt(content);
+        const response = assistantText(session.messages.slice(previousMessageCount).reverse().find(
+          (message) => message.role === "assistant",
+        ));
+        if (!response.trim()) {
+          throw new Error("Contact session did not return an assistant message");
+        }
+        const throughSequence = traceStart
+          ? traceSequence(db, traceStart.mappingId)
+          : undefined;
+        const assistantMessage = messages.appendMessage({
+          id: idFactory(),
+          conversationId,
+          role: "assistant",
+          content: response,
+          ...(traceStart && throughSequence !== undefined
+            ? {
+                metadata: {
+                  processTraceRange: {
+                    afterSequence: traceStart.afterSequence,
+                    throughSequence,
+                  },
                 },
-              },
-            }
-          : {}),
-        createdAt: now(),
+              }
+            : {}),
+          createdAt: now(),
+        });
+        return { userMessage, assistantMessage };
       });
-      return { userMessage, assistantMessage };
     },
     listContactMessages(contactId: string): Message[] {
       const conversation = db.prepare(`
