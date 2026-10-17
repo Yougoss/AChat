@@ -114,6 +114,7 @@
 ### Task 4: Redesign task conversations and task information
 
 **Files:**
+- Modify: `src/app/groups/[groupId]/page.tsx`
 - Modify: `src/components/GroupConversation.tsx`
 - Modify: `src/components/TaskStatusPanel.tsx`
 - Modify: `src/components/RunProcessView.tsx`
@@ -125,10 +126,12 @@
 
 **Interfaces:**
 - Consume Task 1's per-run process summary/detail URLs and Task 3's `ConversationTimeline`/`ProcessDetailsCard`.
+- Pass `processSummaries: Record<runId, ProcessSummary>` from the server page and refresh it from `GET /api/groups/:groupId/messages`; render the process card only on the last assistant reply for a run to avoid duplicate run details.
+- When an assistant reply and a structured handoff share a `sourceRunId`, display the persisted `@recipient` and handoff instruction/context with that reply; never synthesize a file path or review detail absent from stored data.
 - Keep approval, retry, read/unread, live updates, task-description editing, and explicit-mention dispatch behavior available.
-- Task information opens an accessible panel/dialog containing task status, approvals, retry, and run state; do not show the legacy execution ledger as a permanent second column.
+- Task information opens an accessible panel/disclosure containing task status, approvals, retry, and run state; do not show the legacy execution ledger as a permanent second column.
 
-- [ ] **Step 1: Write failing group-conversation tests** for the shared user avatar, five-minute timestamps, assistant process cards, handoff recipient/file/context text, and preserved explicit mention behavior.
+- [ ] **Step 1: Write failing group-conversation tests** for the shared user avatar, five-minute timestamps, one process card per run, same-run handoff recipient/instruction pairing, and preserved explicit mention behavior.
 - [ ] **Step 2: Write failing task-information tests** proving status, approval decisions, and retry controls remain reachable and functional from the task-info control.
 - [ ] **Step 3: Run the focused tests** and verify they fail for the missing chat presentation/panel behavior.
 - [ ] **Step 4: Implement the task conversation layout** and move status/approval/run controls into task information without changing server-side authorization or dispatch semantics.

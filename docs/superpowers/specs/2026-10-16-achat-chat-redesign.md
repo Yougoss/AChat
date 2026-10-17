@@ -16,6 +16,7 @@ Give AChat a familiar, conversation-first workspace for a person coordinating AI
 - Every message sent by the user uses one consistent default avatar marked “我”. Avatar editing/upload is out of scope for this POC.
 - Insert a centered time separator between adjacent messages when their timestamp gap is at least five minutes. Do not add a separator for shorter gaps. Show a date boundary when messages cross calendar days.
 - Render task handoffs as conversational text that explicitly names the recipient and gives the changed-file/context summary needed for review (for example, `@小周` plus changed paths and review focus).
+- When the assistant reply and a structured handoff belong to the same run, present the reply and persisted handoff recipient/instruction together in that response card; do not invent changed-file context that the run did not persist.
 
 ## Process details
 
