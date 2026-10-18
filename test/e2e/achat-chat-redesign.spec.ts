@@ -233,6 +233,76 @@ test("root, mobile list return, and task information remain accessible", async (
   await page.screenshot({ path: test.info().outputPath("task-3-task-drawer-1440x900.png") });
 });
 
+test("workspace primary action hover uses v6 green while non-workspace hover stays coral", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add contact" }).click();
+  await expect(page.getByRole("button", { name: "Close new contact form" })).toBeVisible();
+  await page.getByRole("button", { name: "Close new contact form" }).click();
+  await expect(page.getByRole("button", { name: "Add contact" })).toBeVisible();
+  await page.evaluate(() => {
+    const workspaceButton = document.createElement("button");
+    workspaceButton.className = "button button-primary";
+    workspaceButton.textContent = "Workspace action fixture";
+    document.querySelector(".workspace-shell .workspace-content")?.append(workspaceButton);
+
+    const externalButton = document.createElement("button");
+    externalButton.className = "button button-primary";
+    externalButton.textContent = "External action fixture";
+    document.body.append(externalButton);
+  });
+
+  const workspaceButton = page.getByRole("button", { name: "Workspace action fixture" });
+  await workspaceButton.hover();
+  await expect(workspaceButton).toHaveCSS("background-color", "rgb(7, 193, 96)");
+
+  const externalButton = page.getByRole("button", { name: "External action fixture" });
+  await externalButton.hover();
+  await expect(externalButton).toHaveCSS("background-color", "rgb(183, 83, 68)");
+});
+
+test("keeps contact and group composers at the conversation-panel bottom during errors", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.route("**/api/contacts/contact-1/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 503, json: { error: "Contact message failed" } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/groups/group-demo/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 503, json: { error: "Group message failed" } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await page.getByRole("link", { name: /Ada/ }).click();
+  await page.getByRole("textbox", { name: "Message Ada" }).fill("Trigger the contact error.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.locator(".form-error[role='alert']")).toHaveText("Contact message failed");
+
+  const assertComposerAtBottom = async () => {
+    const panel = page.locator(".conversation-panel");
+    const composer = panel.locator(".message-composer");
+    expect(await composer.evaluate((form) => form.parentElement?.lastElementChild === form)).toBe(true);
+    const panelBox = await panel.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(panelBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(composerBox!.y + composerBox!.height).toBeGreaterThan(panelBox!.y + panelBox!.height - 80);
+  };
+  await assertComposerAtBottom();
+
+  await page.goto("/groups/group-demo");
+  await page.getByRole("textbox", { name: "Message task members" }).fill("Trigger the group error.");
+  await page.getByRole("button", { name: "Send to group" }).click();
+  await expect(page.locator(".form-error[role='alert']")).toHaveText("Group message failed");
+  await assertComposerAtBottom();
+});
+
 test("private process details and contact settings remain available", async ({ page }) => {
   await mockWorkspace(page);
   await page.setViewportSize({ width: 1440, height: 900 });

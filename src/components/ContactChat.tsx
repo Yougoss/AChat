@@ -254,6 +254,15 @@ function ContactChatSession({
             <ContactSessionResults key={visibleContact.id} contactId={visibleContact.id} />
           </details>
         </div>
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}{" "}
+            {createdGroup ? (
+              <Link href={`/groups/${encodeURIComponent(createdGroup.id)}`}>Open group conversation</Link>
+            ) : null}
+          </p>
+        ) : null}
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`contact-message-input-${visibleContact.id}`}>Message {visibleContact.name}</label>
           <textarea
@@ -279,15 +288,6 @@ function ContactChatSession({
             </button>
           </div>
         </form>
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
-        {notice ? (
-          <p className="form-success" role="status">
-            {notice}{" "}
-            {createdGroup ? (
-              <Link href={`/groups/${encodeURIComponent(createdGroup.id)}`}>Open group conversation</Link>
-            ) : null}
-          </p>
-        ) : null}
       </section>
 
       {draft ? (

@@ -2223,6 +2223,11 @@ textarea::placeholder {
   background: var(--green);
 }
 
+.workspace-shell .button-primary:hover:not(:disabled) {
+  border-color: var(--green);
+  background: var(--green);
+}
+
 @media (max-width: 860px) {
   .workspace-shell {
     grid-template-columns: 280px minmax(0, 1fr);

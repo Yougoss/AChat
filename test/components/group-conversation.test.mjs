@@ -117,6 +117,39 @@ test("uses one outgoing avatar and timestamp separators at five minutes and date
   assert.equal(document.querySelectorAll("[data-timeline-separator='date']").length, 1);
 });
 
+test("keeps the group composer after send-error feedback", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    if (String(input) === "/api/groups/group-1/messages" && init.method === "POST") {
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ error: "Group message failed" }),
+      };
+    }
+    throw new Error(`Unexpected request: ${init.method ?? "GET"} ${String(input)}`);
+  };
+
+  try {
+    render(React.createElement(GroupConversation, props({ messages: [], processSummaries: {} })));
+    fireEvent.change(screen.getByRole("textbox", { name: "Message task members" }), {
+      target: { value: "A group message" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send to group" }).closest("form"));
+
+    const error = await screen.findByRole("alert");
+    assert.equal(error.textContent, "Group message failed");
+    const panel = error.closest(".conversation-panel");
+    assert.ok(panel);
+    assert.ok(
+      panel.lastElementChild === panel.querySelector(".message-composer"),
+      "group composer must remain the final panel child while feedback is visible",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("shows persisted task participants in the compact header and opens task information on demand", async () => {
   const longName = "A deliberately long persisted participant name that should remain beside the task action";
   render(React.createElement(GroupConversation, props({

@@ -363,6 +363,7 @@ export function GroupConversation({
           onMarkRunsRead={() => void markRunsRead()}
           onRefresh={refresh}
         />
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`group-message-${group.id}`}>Message task members</label>
           <textarea
@@ -380,7 +381,6 @@ export function GroupConversation({
             </button>
           </div>
         </form>
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
       </section>
   );
 }

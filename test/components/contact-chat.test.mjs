@@ -348,3 +348,88 @@ test("keeps contact session evidence in a collapsed thread disclosure above the 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("keeps the contact composer after send-error feedback", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a/sessions?") return jsonResponse({ items: [] });
+    if (url === "/api/contacts/contact-a/messages" && init.method === "POST") {
+      return jsonResponse({ error: "Contact message failed" }, 503);
+    }
+    throw new Error(`Unexpected request: ${init.method ?? "GET"} ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, {
+      contact: contact("contact-a", "Contact A"),
+      messages: [],
+    }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Contact A" }), {
+      target: { value: "Try this message" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Send message" }).closest("form"));
+
+    const error = await screen.findByRole("alert");
+    assert.equal(error.textContent, "Contact message failed");
+    const panel = error.closest(".conversation-panel");
+    assert.ok(panel);
+    assert.ok(
+      panel.lastElementChild === panel.querySelector(".message-composer"),
+      "contact composer must remain the final panel child while feedback is visible",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps the contact composer after successful task-creation feedback and preserves its link", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a/sessions?") return jsonResponse({ items: [] });
+    if (url === "/api/contacts/contact-a/task-draft" && init.method === "POST") {
+      return jsonResponse({ draft: {
+        name: "Draft group",
+        description: "Draft task",
+        contactIds: ["contact-a"],
+      } });
+    }
+    if (url === "/api/projects") {
+      return jsonResponse({ projects: [{ id: "project-1", name: "Project", rootPath: "/project" }] });
+    }
+    if (url === "/api/groups" && init.method === "POST") {
+      return jsonResponse({ group: { id: "created-group" } }, 201);
+    }
+    throw new Error(`Unexpected request: ${init.method ?? "GET"} ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, {
+      contact: contact("contact-a", "Contact A"),
+      messages: [{
+        id: "source-message",
+        role: "user",
+        content: "Please draft a task.",
+        createdAt: "2026-10-16T10:00:00.000Z",
+      }],
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Draft a task from this conversation" }));
+    await screen.findByRole("heading", { name: "Task draft" });
+    fireEvent.change(screen.getByLabelText("Registered project"), { target: { value: "project-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and create group/task" }));
+
+    const success = await screen.findByRole("status");
+    assert.match(success.textContent, /Group and task created\. No work was dispatched\./);
+    const link = screen.getByRole("link", { name: "Open group conversation" });
+    assert.equal(link.getAttribute("href"), "/groups/created-group");
+    const panel = success.closest(".conversation-panel");
+    assert.ok(panel);
+    assert.ok(
+      panel.lastElementChild === panel.querySelector(".message-composer"),
+      "contact composer must remain the final panel child while feedback is visible",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
