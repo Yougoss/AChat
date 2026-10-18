@@ -252,3 +252,67 @@ test("renders a compact private-channel contact header with one settings action"
     globalThis.fetch = originalFetch;
   }
 });
+
+test("keeps contact session evidence in a collapsed thread disclosure above the composer", async () => {
+  const originalFetch = globalThis.fetch;
+  let finishSecondPage;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a") {
+      return jsonResponse({ contact: contact("contact-a", "Contact A") });
+    }
+    if (url === "/api/contacts/contact-a/messages") return jsonResponse({ messages: [] });
+    if (url === "/api/contacts/contact-a/sessions?") {
+      return jsonResponse({
+        items: [{ ...evidence("task-a", "Contact A evidence"), sessionRefs: ["pi-session-a"] }],
+        nextCursor: "page-2",
+      });
+    }
+    if (url === "/api/contacts/contact-a/sessions?cursor=page-2") {
+      return new Promise((resolve) => {
+        finishSecondPage = resolve;
+      });
+    }
+    if (url === "/api/contacts/contact-a/sessions?cursor=page-3") {
+      return jsonResponse({ error: "Evidence page failed" }, 503);
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, { contactId: "contact-a" }));
+    const heading = await screen.findByRole("heading", { name: "Contact A" });
+    const conversationPanel = heading.closest(".conversation-panel");
+    const disclosure = conversationPanel?.querySelector("details.contact-session-evidence");
+    assert.ok(disclosure);
+    assert.equal(disclosure.open, false);
+
+    const thread = disclosure.closest(".conversation-thread");
+    assert.ok(thread);
+    assert.ok(thread.querySelector(".message-list"));
+    const composer = conversationPanel.querySelector(".message-composer");
+    assert.ok(composer);
+    assert.ok(disclosure.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.equal(conversationPanel.lastElementChild, composer);
+
+    fireEvent.click(screen.getByText("Session evidence", { exact: true }));
+    await screen.findByText("Contact A evidence");
+    fireEvent.click(screen.getByText("Pi session references (1)"));
+    await screen.findByText("pi-session-a");
+    fireEvent.click(screen.getByRole("button", { name: "Load more results" }));
+    assert.ok(screen.getByRole("button", { name: "Loading…" }));
+    await act(async () => {
+      finishSecondPage(jsonResponse({
+        items: [evidence("task-b", "Second page evidence")],
+        nextCursor: "page-3",
+      }));
+    });
+    await screen.findByText("Second page evidence");
+    assert.ok(screen.getByText("Contact A evidence"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more results" }));
+    const error = await screen.findByRole("alert");
+    assert.equal(error.textContent, "Evidence page failed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

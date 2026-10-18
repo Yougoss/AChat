@@ -83,6 +83,32 @@ async function mockWorkspace(page: Page) {
         }],
       },
     }));
+  await page.route("**/api/contacts/contact-1/sessions?*", async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    if (cursor) await new Promise((resolve) => setTimeout(resolve, 400));
+    return route.fulfill({
+      json: cursor
+        ? {
+            items: [{
+              taskId: "task-evidence-2",
+              title: "Second evidence page",
+              lastActivity: "2026-10-16T10:00:00.000Z",
+              status: "completed",
+              sessionRefs: [],
+            }],
+          }
+        : {
+            items: [{
+              taskId: "task-evidence-1",
+              title: "First evidence page",
+              lastActivity: "2026-10-16T10:00:00.000Z",
+              status: "completed",
+              sessionRefs: ["pi-session-1"],
+            }],
+            nextCursor: "page-2",
+          },
+    });
+  });
 }
 
 test("root, mobile list return, and task information remain accessible", async ({ page }) => {
@@ -175,6 +201,7 @@ test("root, mobile list return, and task information remain accessible", async (
 test("private process details and contact settings remain available", async ({ page }) => {
   await mockWorkspace(page);
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await page.getByRole("link", { name: /Ada/ }).click();
   await expect(page.getByRole("heading", { name: "Ada" })).toBeVisible();
@@ -183,12 +210,41 @@ test("private process details and contact settings remain available", async ({ p
   await expect(contactHeader).toContainText("Private contact channel");
   await expect(contactHeader).not.toContainText("Private assistant");
   await expect(contactHeader.getByRole("link", { name: "Contact settings" })).toHaveCount(1);
-  await expect(page.locator(".message-list")).toHaveCSS("background-color", "rgb(27, 29, 30)");
+  await expect(page.locator(".conversation-thread")).toHaveCSS("background-color", "rgb(27, 29, 30)");
   await expect(page.locator(".message-user")).toHaveCSS("background-color", "rgb(23, 61, 45)");
   await expect(page.locator(".message-assistant")).toHaveCSS("background-color", "rgb(48, 51, 52)");
   await expect(page.locator(".process-details-card")).toHaveCSS("background-color", "rgb(41, 43, 44)");
+  const evidenceDisclosure = page.locator("details.contact-session-evidence");
+  await expect(evidenceDisclosure).toBeVisible();
+  await expect(evidenceDisclosure).not.toHaveAttribute("open", "");
+  await expect(evidenceDisclosure).toContainText("Session evidence");
+  const conversationThread = page.locator(".conversation-thread");
+  await expect(conversationThread).toContainText("The requested change is ready.");
+  await expect(conversationThread).toContainText("Session evidence");
+  await expect(conversationThread).toHaveCSS("overflow-y", "auto");
+  const composer = page.locator(".message-composer");
+  expect(await composer.evaluate((form) => form.parentElement?.lastElementChild === form)).toBe(true);
+  const composerBox = await composer.boundingBox();
+  const contentBox = await page.locator(".workspace-content").boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect(composerBox!.y + composerBox!.height).toBeGreaterThan(contentBox!.y + contentBox!.height - 80);
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
   await page.screenshot({ path: test.info().outputPath("task-1-contact-1440x900.png") });
+
+  await evidenceDisclosure.locator(":scope > summary").click();
+  await expect(page.getByRole("heading", { name: "Evidence from your sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "First evidence page" })).toBeVisible();
+  const expandedComposerBox = await composer.boundingBox();
+  expect(expandedComposerBox).not.toBeNull();
+  expect(expandedComposerBox!.y + expandedComposerBox!.height).toBeGreaterThan(contentBox!.y + contentBox!.height - 80);
+  await page.screenshot({ path: test.info().outputPath("task-1-contact-evidence-open-1440x900.png") });
+  await page.getByText("Pi session references (1)").click();
+  await expect(page.getByText("pi-session-1")).toBeVisible();
+  const loadMore = page.getByRole("button", { name: "Load more results" });
+  await loadMore.click();
+  await expect(page.getByRole("button", { name: "Loading…" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Second evidence page" })).toBeVisible();
 
   await page.setViewportSize({ width: 650, height: 844 });
   await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();

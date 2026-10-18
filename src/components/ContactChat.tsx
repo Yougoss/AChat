@@ -234,20 +234,26 @@ function ContactChatSession({
             Contact settings
           </Link>
         </header>
-        <ConversationTimeline
-          messages={messages}
-          senderLabels={{ user: "You", assistant: visibleContact.name }}
-          processSummaries={processSummaries}
-          processDetailsUrl={(messageId) =>
-            `/api/contacts/${encodeURIComponent(visibleContact.id)}/messages/${encodeURIComponent(messageId)}/process`}
-          ariaLabel={`${visibleContact.name} conversation`}
-          emptyState={
-            <>
-              <p>Start a private conversation with {visibleContact.name}.</p>
-              <p className="evidence-meta">Messages and replies stay in this contact’s conversation.</p>
-            </>
-          }
-        />
+        <div className="conversation-thread">
+          <ConversationTimeline
+            messages={messages}
+            senderLabels={{ user: "You", assistant: visibleContact.name }}
+            processSummaries={processSummaries}
+            processDetailsUrl={(messageId) =>
+              `/api/contacts/${encodeURIComponent(visibleContact.id)}/messages/${encodeURIComponent(messageId)}/process`}
+            ariaLabel={`${visibleContact.name} conversation`}
+            emptyState={
+              <>
+                <p>Start a private conversation with {visibleContact.name}.</p>
+                <p className="evidence-meta">Messages and replies stay in this contact’s conversation.</p>
+              </>
+            }
+          />
+          <details className="contact-session-evidence">
+            <summary>Session evidence</summary>
+            <ContactSessionResults key={visibleContact.id} contactId={visibleContact.id} />
+          </details>
+        </div>
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`contact-message-input-${visibleContact.id}`}>Message {visibleContact.name}</label>
           <textarea
@@ -322,7 +328,6 @@ function ContactChatSession({
         </section>
       ) : null}
 
-      <ContactSessionResults key={visibleContact.id} contactId={visibleContact.id} />
     </div>
   );
 }
