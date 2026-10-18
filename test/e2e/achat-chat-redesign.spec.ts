@@ -151,6 +151,15 @@ test("root, mobile list return, and task information remain accessible", async (
     incoming: "#303334",
     code: "#292b2c",
   });
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.screenshot({ path: test.info().outputPath("task-3-root-1440x900.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("task-3-root-390x844.png") });
+  await page.setViewportSize({ width: 650, height: 844 });
+  await expect.poll(() => page.locator(".workspace-shell").evaluate((shell) =>
+    Number.parseFloat(getComputedStyle(shell).gridTemplateColumns))).toBe(220);
+  await page.setViewportSize({ width: 1440, height: 900 });
   const title = page.getByRole("heading", { name: "Conversations" });
   const search = page.getByRole("search");
   const filters = page.getByRole("group", { name: "Filter conversations" });
@@ -167,8 +176,6 @@ test("root, mobile list return, and task information remain accessible", async (
     list: ".contact-roster",
   })).toBe(true);
 
-  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
-  await page.screenshot({ path: test.info().outputPath("task-1-root-1440x900.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("link", { name: /Feature/ }).click();
   await expect(page.getByRole("heading", { name: "Feature" })).toBeVisible();
@@ -181,21 +188,49 @@ test("root, mobile list return, and task information remain accessible", async (
   await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();
 
   await page.getByRole("link", { name: /Feature/ }).click();
-  const taskInformation = page.locator(".task-information > summary");
-  await expect(taskInformation).toBeVisible();
-  await expect(taskInformation).not.toHaveAttribute("aria-label");
-  await expect(taskInformation).toHaveAccessibleName(/Task information/);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const taskHeader = page.locator(".conversation-header");
+  await expect(taskHeader.getByRole("heading", { name: "Feature" })).toBeVisible();
+  await expect(taskHeader).toContainText("Task group");
+  await expect(taskHeader.getByRole("button", { name: "Task information" })).toHaveCount(1);
+  const taskInformation = taskHeader.getByRole("button", { name: "Task information" });
+  await expect(page.locator(".task-information-drawer")).toHaveCount(0);
+  await expect(taskHeader).not.toContainText("Private assistant");
+  await page.screenshot({ path: test.info().outputPath("task-3-task-closed-1440x900.png") });
+
+  await page.setViewportSize({ width: 650, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();
+  await expect.poll(() => page.locator(".workspace-shell").evaluate((shell) =>
+    Number.parseFloat(getComputedStyle(shell).gridTemplateColumns))).toBe(220);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeHidden();
+  await expect(backLink).toBeVisible();
+  const participantSubtitle = taskHeader.locator(".conversation-subtitle");
+  const participantMarkup = await participantSubtitle.evaluate((element) => element.innerHTML);
+  await participantSubtitle.evaluate((element) => {
+    element.textContent = `Task group · ${"Persisted participant name ".repeat(8)}`;
+  });
+  const participantBox = await participantSubtitle.boundingBox();
+  const taskActionBox = await taskInformation.boundingBox();
+  expect(participantBox).not.toBeNull();
+  expect(taskActionBox).not.toBeNull();
+  expect(participantBox!.x + participantBox!.width).toBeLessThanOrEqual(taskActionBox!.x);
+  await expect(participantSubtitle).toHaveCSS("text-overflow", "ellipsis");
+  await expect(participantSubtitle).toHaveCSS("white-space", "nowrap");
+  await participantSubtitle.evaluate((element, markup) => {
+    element.innerHTML = markup;
+  }, participantMarkup);
+  await page.screenshot({ path: test.info().outputPath("task-3-task-closed-390x844.png") });
   await backLink.focus();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Add task description" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Refresh activity" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(taskInformation).toBeFocused();
   await expect(taskInformation).toHaveCSS("outline-style", "solid");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".task-information")).toHaveAttribute("open", "");
+  await expect(page.getByRole("complementary", { name: "Task information" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Run history" })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("task-3-task-drawer-390x844.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: test.info().outputPath("task-3-task-drawer-1440x900.png") });
 });
 
 test("private process details and contact settings remain available", async ({ page }) => {
@@ -212,8 +247,8 @@ test("private process details and contact settings remain available", async ({ p
   await expect(contactHeader.getByRole("link", { name: "Contact settings" })).toHaveCount(1);
   await expect(page.locator(".conversation-thread")).toHaveCSS("background-color", "rgb(27, 29, 30)");
   await expect(page.locator(".message-user")).toHaveCSS("background-color", "rgb(23, 61, 45)");
-  await expect(page.locator(".message-assistant")).toHaveCSS("background-color", "rgb(48, 51, 52)");
-  await expect(page.locator(".process-details-card")).toHaveCSS("background-color", "rgb(41, 43, 44)");
+  await expect(page.locator(".message-assistant")).toHaveCSS("background-color", "rgb(32, 34, 35)");
+  await expect(page.locator(".process-details-summary")).toHaveCSS("background-color", "rgb(32, 34, 35)");
   const evidenceDisclosure = page.locator("details.contact-session-evidence");
   await expect(evidenceDisclosure).toBeVisible();
   await expect(evidenceDisclosure).not.toHaveAttribute("open", "");
@@ -230,7 +265,10 @@ test("private process details and contact settings remain available", async ({ p
   expect(contentBox).not.toBeNull();
   expect(composerBox!.y + composerBox!.height).toBeGreaterThan(contentBox!.y + contentBox!.height - 80);
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
-  await page.screenshot({ path: test.info().outputPath("task-1-contact-1440x900.png") });
+  await page.screenshot({ path: test.info().outputPath("task-3-private-1440x900.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: test.info().outputPath("task-3-private-390x844.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   await evidenceDisclosure.locator(":scope > summary").click();
   await expect(page.getByRole("heading", { name: "Evidence from your sessions" })).toBeVisible();
@@ -261,11 +299,16 @@ test("private process details and contact settings remain available", async ({ p
   await page.keyboard.press("Enter");
   await expect(processToggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Read source file")).toBeVisible();
+  await expect(page.locator(".process-event").first()).toHaveCSS("background-color", "rgb(41, 43, 44)");
 
   await page.getByRole("link", { name: "Contact settings" }).click();
   await expect(page.getByRole("heading", { name: "Ada" })).toBeVisible();
   await expect(page.getByText("Current model")).toBeVisible();
   await expect(page.getByText("Provider access", { exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("task-3-contact-settings-1440x900.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: test.info().outputPath("task-3-contact-settings-390x844.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
 });
 
 test("project settings preserve required fields and server validation errors", async ({ page }) => {
@@ -288,8 +331,14 @@ test("project settings preserve required fields and server validation errors", a
   await expect(page.getByRole("heading", { name: "Registered projects" })).toBeVisible();
   await expect(page.getByLabel("Project name")).toHaveAttribute("required", "");
   await expect(page.getByLabel("Existing directory path")).toHaveAttribute("required", "");
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.screenshot({ path: test.info().outputPath("task-3-project-registration-1440x900.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: test.info().outputPath("task-3-project-registration-390x844.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByLabel("Project name").fill("Missing project");
   await page.getByLabel("Existing directory path").fill("/does/not/exist");
   await page.getByRole("button", { name: "Register project" }).click();
   await expect(page.locator(".form-error[role='alert']")).toHaveText("The selected directory does not exist.");
+  await page.screenshot({ path: test.info().outputPath("task-3-project-registration-validation-1440x900.png") });
 });

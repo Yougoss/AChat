@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import React from "react";
 import { afterEach, test } from "node:test";
 import { JSDOM } from "jsdom";
-import { renderToStaticMarkup } from "react-dom/server";
 import { TaskStatusPanel } from "../../src/components/TaskStatusPanel.tsx";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
@@ -31,20 +30,13 @@ function approval() {
   };
 }
 
-test("opens task information to expose task, run and approval state and allow approval decisions", async () => {
-  const originalFetch = globalThis.fetch;
-  const requests = [];
-  globalThis.fetch = async (input, init = {}) => {
-    requests.push({ url: String(input), body: JSON.parse(init.body) });
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ approval: { ...approval(), status: "approved" } }),
-    };
-  };
-  try {
-    render(React.createElement(TaskStatusPanel, {
+test("renders task goal, participants, run state and unread state in the open drawer", () => {
+  const onClose = () => {};
+  render(React.createElement(TaskStatusPanel, {
+      open: true,
       taskId: "task-1",
+      taskGoal: "Improve the app",
+      participants: ["Builder", "Reviewer"],
       taskStatus: "open",
       runs: [{
         id: "run-1",
@@ -63,51 +55,36 @@ test("opens task information to expose task, run and approval state and allow ap
       }],
       unreadCount: 2,
       pendingAttentionCount: 1,
-      approvals: [approval()],
+      onClose,
     }));
 
-    const disclosure = document.querySelector("details");
-    assert.ok(disclosure);
-    assert.equal(disclosure.open, false);
-    const summary = disclosure.querySelector("summary");
-    assert.match(summary.textContent, /Task information.*open.*1 run.*2 unread.*1 waiting/);
-    assert.equal(summary.hasAttribute("aria-label"), false);
-    fireEvent.click(screen.getByText("Task information"));
-
-    assert.equal(disclosure.open, true);
-    assert.match(screen.getByText("open").textContent, /open/);
-    assert.match(screen.getByText("Running").textContent, /Running/);
-    assert.match(screen.getByText("1 waiting").textContent, /1 waiting/);
+    const drawer = screen.getByRole("complementary", { name: "Task information" });
+    assert.match(drawer.textContent, /Improve the app/);
+    assert.match(drawer.textContent, /Builder.*Reviewer/);
+    assert.match(drawer.textContent, /open/);
+    assert.match(drawer.textContent, /Running/);
     assert.equal(screen.getByLabelText("2 unread runs").textContent, "2");
-    assert.ok(screen.getByRole("article", { name: "Tool approval approval-1" }));
     assert.ok(screen.getByRole("heading", { name: "Run history" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Approve action" }));
-    await screen.findByText("approved");
-    assert.deepEqual(requests, [{
-      url: "/api/approvals/approval-1",
-      body: { decision: "approve" },
-    }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    fireEvent.click(screen.getByRole("button", { name: "Close task information" }));
 });
 
-test("keeps a clear no-run state inside task information when no work has been dispatched", () => {
-  const markup = renderToStaticMarkup(React.createElement(TaskStatusPanel, {
+test("keeps the task-information drawer closed when it is not requested", () => {
+  render(React.createElement(TaskStatusPanel, {
+    open: false,
+    taskId: "task-1",
+    taskGoal: "Improve the app",
+    participants: [],
     taskStatus: "open",
     runs: [],
     unreadCount: 0,
     pendingAttentionCount: 0,
+    onClose() {},
   }));
-
-  assert.match(markup, /<summary[^>]*>.*Task information/);
-  assert.match(markup, /No runs have been dispatched for this task/);
-  assert.match(markup, /No requests/);
-  assert.match(markup, /No unread runs/);
+  assert.equal(screen.queryByRole("complementary", { name: "Task information" }), null);
+  assert.equal(screen.queryByRole("heading", { name: "Run history" }), null);
 });
 
-test("keeps retry reachable and functional inside the task-information disclosure", async () => {
+test("keeps explicit retry reachable and functional inside the task-information drawer", async () => {
   const originalFetch = globalThis.fetch;
   let finishRetry;
   let request;
@@ -117,7 +94,10 @@ test("keeps retry reachable and functional inside the task-information disclosur
   };
   try {
     render(React.createElement(TaskStatusPanel, {
+      open: true,
       taskId: "task-1",
+      taskGoal: "Continue the task",
+      participants: ["Builder"],
       taskStatus: "open",
       runs: [{
         id: "interrupted-run",
@@ -136,9 +116,9 @@ test("keeps retry reachable and functional inside the task-information disclosur
       }],
       unreadCount: 0,
       pendingAttentionCount: 0,
+      onClose() {},
     }));
 
-    fireEvent.click(screen.getByText("Task information"));
     const retryButton = screen.getByRole("button", { name: "Retry interrupted work" });
     fireEvent.click(retryButton);
     assert.equal(retryButton.disabled, true);

@@ -198,12 +198,12 @@ test("runs a handoff in the recipient's existing task session with durable run a
   assert.match(markup, /@Developer/);
   assert.match(markup, /@Tester/);
   assert.match(markup, /Run the integration suite/);
-  assert.match(markup, /completed/i);
   assert.match(markup, /The focused test passes/);
   assert.match(markup, /Process details/);
   assert.match(markup, /Show process details/);
   assert.match(markup, /Task information/);
-  assert.match(markup, /Run history/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.doesNotMatch(markup, /Run history|completed/i);
   assert.doesNotMatch(markup, /The file is present/);
 });
 

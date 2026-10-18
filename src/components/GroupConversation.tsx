@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Approval, Group, Message, Run, Task } from "../server/domain/types.ts";
 import type { ProcessSummary } from "../server/services/process-details-service.ts";
+import { ApprovalCard } from "./ApprovalCard.tsx";
 import { ConversationTimeline, type TimelineHandoff, type TimelineMessage } from "./ConversationTimeline.tsx";
 import { TaskStatusPanel } from "./TaskStatusPanel.tsx";
 
@@ -131,6 +132,7 @@ export function GroupConversation({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [liveStatus, setLiveStatus] = useState("Connecting to live activity");
+  const [taskInformationOpen, setTaskInformationOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/groups/${encodeURIComponent(group.id)}/messages`);
@@ -265,96 +267,101 @@ export function GroupConversation({
   }
 
   return (
-    <main className="group-workspace">
       <section className="conversation-panel group-conversation-panel" aria-labelledby="group-title">
         <header className="conversation-header">
-          <div>
-            <p className="eyebrow">Dispatch workbench · group task</p>
+          <div className="conversation-header-copy">
             <h1 id="group-title">{group.name}</h1>
-            {editingDescription ? (
-              <form className="task-description-editor" onSubmit={(event) => void saveTaskDescription(event)}>
-                <label htmlFor={`task-description-${task.id}`}>Task description</label>
-                <textarea
-                  id={`task-description-${task.id}`}
-                  value={descriptionDraft}
-                  onChange={(event) => setDescriptionDraft(event.currentTarget.value)}
-                  rows={3}
-                  required
-                />
-                <div className="task-description-actions">
-                  <button
-                    className="button button-primary"
-                    type="submit"
-                    disabled={savingDescription || !descriptionDraft.trim()}
-                  >
-                    {savingDescription ? "Saving…" : "Save changes"}
-                  </button>
-                  <button
-                    className="button button-quiet"
-                    type="button"
-                    onClick={() => {
-                      setDescriptionDraft(taskDescription);
-                      setEditingDescription(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="task-description-row">
-                <p>
-                  {taskDescription || "No task description yet. Add one before the first work trigger."}
-                </p>
+            <p className="conversation-subtitle">
+              Task group · {contacts.map((contact) => contact.name).join(", ") || "No participants"}
+            </p>
+          </div>
+          <button
+            className="button button-quiet"
+            type="button"
+            aria-expanded={taskInformationOpen}
+            onClick={() => setTaskInformationOpen((open) => !open)}
+          >
+            Task information
+          </button>
+        </header>
+        <div className="group-live-status visually-hidden" role="status">{liveStatus}</div>
+        <div className="conversation-thread">
+          {approvals.length ? (
+            <section className="task-approval-thread" aria-label="Pending approvals">
+              {approvals.map((approval) => (
+                <ApprovalCard approval={approval} key={approval.id} onDecided={() => void refresh()} />
+              ))}
+            </section>
+          ) : null}
+          <ConversationTimeline
+            messages={conversationTimeline(messages, contacts)}
+            senderLabels={{ user: "You", assistant: "Task member" }}
+            processSummaries={processSummaries}
+            processDetailsUrl={(runId) =>
+              `/api/groups/${encodeURIComponent(group.id)}/runs/${encodeURIComponent(runId)}/process`}
+            ariaLabel={`${group.name} conversation`}
+            emptyState={
+              <>
+                <p>Start the task conversation by explicitly mentioning a member.</p>
+                <p className="evidence-meta">Only @contact and @all messages create work.</p>
+              </>
+            }
+          />
+        </div>
+        <TaskStatusPanel
+          open={taskInformationOpen}
+          taskId={task.id}
+          taskGoal={taskDescription}
+          participants={contacts.map((contact) => contact.name)}
+          taskGoalActions={editingDescription ? (
+            <form className="task-description-editor" onSubmit={(event) => void saveTaskDescription(event)}>
+              <label htmlFor={`task-description-${task.id}`}>Task description</label>
+              <textarea
+                id={`task-description-${task.id}`}
+                value={descriptionDraft}
+                onChange={(event) => setDescriptionDraft(event.currentTarget.value)}
+                rows={3}
+                required
+              />
+              <div className="task-description-actions">
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={savingDescription || !descriptionDraft.trim()}
+                >
+                  {savingDescription ? "Saving…" : "Save changes"}
+                </button>
                 <button
                   className="button button-quiet"
                   type="button"
                   onClick={() => {
                     setDescriptionDraft(taskDescription);
-                    setEditingDescription(true);
+                    setEditingDescription(false);
                   }}
                 >
-                  {taskDescription ? "Edit task description" : "Add task description"}
+                  Cancel
                 </button>
               </div>
-            )}
-          </div>
-          <button className="button button-quiet" type="button" onClick={() => void refresh()}>
-            Refresh activity
-          </button>
-        </header>
-        <div className="group-live-status" role="status">{liveStatus}</div>
-        <div className="group-member-strip" aria-label="Task members">
-          {contacts.map((contact) => (
-            <span className="group-member-chip" key={contact.id}>
-              <span className="contact-avatar" aria-hidden="true">{contact.name.slice(0, 1).toUpperCase()}</span>
-              {contact.name}
-            </span>
-          ))}
-        </div>
-        <TaskStatusPanel
-          taskId={task.id}
+            </form>
+          ) : (
+            <button
+              className="button button-quiet"
+              type="button"
+              onClick={() => {
+                setDescriptionDraft(taskDescription);
+                setEditingDescription(true);
+              }}
+            >
+              {taskDescription ? "Edit task description" : "Add task description"}
+            </button>
+          )}
           taskStatus={taskStatus}
           runs={runs}
           unreadCount={unreadCount}
           pendingAttentionCount={pendingAttentionCount}
-          approvals={approvals}
+          onClose={() => setTaskInformationOpen(false)}
           onMarkRunsRead={() => void markRunsRead()}
           onRefresh={refresh}
-        />
-        <ConversationTimeline
-          messages={conversationTimeline(messages, contacts)}
-          senderLabels={{ user: "You", assistant: "Task member" }}
-          processSummaries={processSummaries}
-          processDetailsUrl={(runId) =>
-            `/api/groups/${encodeURIComponent(group.id)}/runs/${encodeURIComponent(runId)}/process`}
-          ariaLabel={`${group.name} conversation`}
-          emptyState={
-            <>
-              <p>Start the task conversation by explicitly mentioning a member.</p>
-              <p className="evidence-meta">Only @contact and @all messages create work.</p>
-            </>
-          }
         />
         <form className="message-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor={`group-message-${group.id}`}>Message task members</label>
@@ -375,6 +382,5 @@ export function GroupConversation({
         </form>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </section>
-    </main>
   );
 }

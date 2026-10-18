@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { Approval, Run } from "../server/domain/types.ts";
-import { ApprovalCard } from "./ApprovalCard.tsx";
+import type { ReactNode } from "react";
+import type { Run } from "../server/domain/types.ts";
 import { RunProcessView } from "./RunProcessView.tsx";
 import { UnreadBadge } from "./UnreadBadge.tsx";
 
@@ -16,12 +16,16 @@ interface TaskRunStatus extends Run {
 }
 
 interface TaskStatusPanelProps {
+  open: boolean;
   taskId: string;
+  taskGoal: string;
+  participants: string[];
+  taskGoalActions?: ReactNode;
   taskStatus: string;
   runs: TaskRunStatus[];
   unreadCount: number;
   pendingAttentionCount: number;
-  approvals?: Approval[];
+  onClose: () => void;
   onMarkRunsRead?: () => void;
   onRefresh?: () => Promise<void> | void;
 }
@@ -33,12 +37,16 @@ function stuckLabel(state: TaskRunStatus["stuck"]): string {
 }
 
 export function TaskStatusPanel({
+  open,
   taskId,
+  taskGoal,
+  participants,
+  taskGoalActions,
   taskStatus,
   runs,
   unreadCount,
   pendingAttentionCount,
-  approvals = [],
+  onClose,
   onMarkRunsRead,
   onRefresh,
 }: TaskStatusPanelProps) {
@@ -66,22 +74,53 @@ export function TaskStatusPanel({
     }
   }
 
+  if (!open) return null;
+
   return (
-    <details className="task-information">
-      <summary>
-        <span>Task information</span>
-        <span className="task-information-signals">
-          {taskStatus} · {runs.length} {runs.length === 1 ? "run" : "runs"}
-          {unreadCount ? ` · ${unreadCount} unread` : ""}
-          {pendingAttentionCount ? ` · ${pendingAttentionCount} waiting` : ""}
-        </span>
-      </summary>
+    <aside
+      id="task-information-drawer"
+      className="task-information-drawer"
+      aria-label="Task information"
+    >
+      <header className="task-drawer-header">
+        <h2>Task information</h2>
+        <div className="task-drawer-actions">
+          <button className="button button-quiet" type="button" onClick={() => void onRefresh?.()}>
+            Refresh activity
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Close task information"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+      </header>
       <div className="task-information-body">
+        <section className="task-goal-card" aria-labelledby="task-goal-title">
+          <h3 id="task-goal-title">Task goal</h3>
+          <p>{taskGoal || "No task description yet."}</p>
+          {taskGoalActions}
+        </section>
+        <section className="task-participants" aria-labelledby="task-participants-title">
+          <h3 id="task-participants-title">Participants</h3>
+          {participants.length ? (
+            <ul className="task-participant-list">
+              {participants.map((participant) => (
+                <li key={participant}>{participant}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="status-empty">No participants.</p>
+          )}
+        </section>
         <section className="task-status-panel" aria-labelledby="task-status-title">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Independent signals</p>
-              <h2 id="task-status-title">Task status</h2>
+              <p className="eyebrow">Current activity</p>
+              <h3 id="task-status-title">Task status</h3>
             </div>
             <UnreadBadge count={unreadCount} />
           </div>
@@ -139,25 +178,8 @@ export function TaskStatusPanel({
             </div>
           ) : null}
         </section>
-        <section className="approval-section" aria-labelledby="approval-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Action gate</p>
-              <h2 id="approval-title">Approvals</h2>
-            </div>
-          </div>
-          {!approvals.length ? (
-            <p className="approval-empty">No actions are waiting for approval.</p>
-          ) : (
-            <div className="approval-list">
-              {approvals.map((approval) => (
-                <ApprovalCard approval={approval} key={approval.id} onDecided={() => void onRefresh?.()} />
-              ))}
-            </div>
-          )}
-        </section>
         <RunProcessView runs={runs} />
       </div>
-    </details>
+    </aside>
   );
 }

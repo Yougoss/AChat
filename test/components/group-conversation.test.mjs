@@ -15,7 +15,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.EventSource = class {
   close() {}
 };
-const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 
 afterEach(cleanup);
 
@@ -80,6 +80,20 @@ function props(overrides = {}) {
   };
 }
 
+function approval() {
+  return {
+    id: "approval-1",
+    taskId: "task-1",
+    workItemId: "work-1",
+    piSessionId: "session-1",
+    toolCallId: "call-1",
+    action: { toolName: "bash", input: { command: "npm test" } },
+    status: "pending",
+    createdAt: "2026-10-16T02:00:00.000Z",
+    decidedAt: null,
+  };
+}
+
 test("uses one outgoing avatar and timestamp separators at five minutes and date boundaries", () => {
   const firstTime = new Date(2026, 9, 16, 23, 52).toISOString();
   const fiveMinutesLater = new Date(2026, 9, 16, 23, 57).toISOString();
@@ -97,10 +111,140 @@ test("uses one outgoing avatar and timestamp separators at five minutes and date
     [...document.querySelectorAll(".message-line-user .message-avatar")].map((avatar) => avatar.textContent),
     ["我", "我"],
   );
-  assert.ok(document.querySelector("details.task-information"));
+  assert.ok(document.querySelector(".conversation-header"));
   assert.equal(document.querySelector(".group-status-column"), null);
   assert.equal(document.querySelectorAll("[data-timeline-separator='time']").length, 2);
   assert.equal(document.querySelectorAll("[data-timeline-separator='date']").length, 1);
+});
+
+test("shows persisted task participants in the compact header and opens task information on demand", async () => {
+  const longName = "A deliberately long persisted participant name that should remain beside the task action";
+  render(React.createElement(GroupConversation, props({
+    contacts: [
+      { id: "contact-builder", name: longName },
+      { id: "contact-reviewer", name: "Reviewer" },
+    ],
+    runs: [{
+      id: "interrupted-run",
+      taskId: "task-1",
+      workItemId: "work-1",
+      contactId: "contact-builder",
+      attempt: 1,
+      status: "interrupted",
+      startedAt: "2026-10-16T10:00:00.000Z",
+      completedAt: null,
+      workItemStatus: "interrupted",
+      contactName: longName,
+      title: "Continue the task",
+      stuck: "not_stuck",
+      lifecycleEvidence: "terminal",
+    }],
+  })));
+
+  const header = document.querySelector(".conversation-header");
+  assert.equal(header.querySelector("h1").textContent, "Planning");
+  assert.equal(header.querySelector(".conversation-subtitle").textContent, `Task group · ${longName}, Reviewer`);
+  assert.doesNotMatch(header.textContent, /developer|reviewer role|（开发）|（评审）/i);
+  assert.equal(header.querySelectorAll("button").length, 1);
+  assert.equal(header.querySelector("button").textContent, "Task information");
+  assert.equal(header.querySelector(".conversation-subtitle").classList.contains("conversation-subtitle"), true);
+  assert.equal(document.querySelector(".group-member-strip"), null);
+  assert.equal(document.querySelector(".group-live-status:not(.visually-hidden)"), null);
+  assert.equal(document.querySelector("[aria-label='Task information']"), null);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Task information" }));
+  });
+  const drawer = screen.getByRole("complementary", { name: "Task information" });
+  assert.equal(drawer.hidden, false);
+  assert.match(drawer.textContent, /Improve the app/);
+  assert.ok(screen.getByRole("button", { name: "Retry interrupted work" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Close task information" }));
+  });
+  assert.equal(screen.queryByRole("complementary", { name: "Task information" }), null);
+  assert.equal(screen.getByRole("button", { name: "Task information" }).getAttribute("aria-expanded"), "false");
+});
+
+test("keeps pending approval cards actionable in the task conversation with existing approval identity and payload", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    requests.push({ url, body: init.body ? JSON.parse(init.body) : undefined });
+    if (url === "/api/approvals/approval-1") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ approval: { ...approval(), status: "approved" } }),
+      };
+    }
+    if (url === "/api/groups/group-1/messages") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: [], runs: [], processSummaries: {}, approvals: [] }),
+      };
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  try {
+    render(React.createElement(GroupConversation, props({
+      messages: [],
+      processSummaries: {},
+      approvals: [approval()],
+    })));
+
+    const approvalCard = screen.getByRole("article", { name: "Tool approval approval-1" });
+    assert.ok(document.querySelector(".conversation-thread").contains(approvalCard));
+    assert.equal(document.querySelector(".task-information-drawer"), null);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Approve action" }));
+    });
+    await waitFor(() => assert.equal(
+      screen.queryByRole("article", { name: "Tool approval approval-1" }),
+      null,
+    ));
+    assert.deepEqual(requests[0], {
+      url: "/api/approvals/approval-1",
+      body: { decision: "approve" },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps task-description editing available from task information", async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (input, init = {}) => {
+    request = { url: String(input), method: init.method, body: JSON.parse(init.body) };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ task: { ...props().task, description: request.body.description } }),
+    };
+  };
+  try {
+    render(React.createElement(GroupConversation, props()));
+    fireEvent.click(screen.getByRole("button", { name: "Task information" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit task description" }));
+    fireEvent.change(screen.getByLabelText("Task description"), {
+      target: { value: "Keep the existing task contract." },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    });
+
+    assert.deepEqual(request, {
+      url: "/api/tasks/task-1",
+      method: "PATCH",
+      body: { description: "Keep the existing task contract." },
+    });
+    assert.match(screen.getByRole("complementary", { name: "Task information" }).textContent, /Keep the existing task contract\./);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("shows one run process card on the final assistant reply and pairs its persisted handoff", () => {
@@ -188,6 +332,7 @@ test("replaces run process summaries with the group messages refresh response", 
     })));
 
     assert.equal(screen.queryByRole("region", { name: "Process details" }), null);
+    fireEvent.click(screen.getByRole("button", { name: "Task information" }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh activity" }));
     await screen.findByRole("region", { name: "Process details" });
     fireEvent.click(screen.getByRole("button", { name: "Refresh activity" }));
