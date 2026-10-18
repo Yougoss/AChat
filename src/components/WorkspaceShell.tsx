@@ -111,18 +111,8 @@ export function WorkspaceShell({
   return (
     <div className={`workspace-shell${hasActiveConversation ? " has-active-conversation" : ""}`}>
       <aside className="contact-rail" aria-label="Conversation navigation">
-        <div className="rail-brand">
-          <Link href="/" aria-label="AChat workspace home">
-            <span className="brand-mark" aria-hidden="true">A</span>
-            <span>AChat<span className="brand-subtitle">dispatch desk</span></span>
-          </Link>
-        </div>
-        <SearchBox contactId={activeContactId} />
         <div className="roster-heading">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h2>Conversations</h2>
-          </div>
+          <h2>Conversations</h2>
           <button
             type="button"
             className="icon-button"
@@ -132,6 +122,7 @@ export function WorkspaceShell({
             {creating ? "×" : "+"}
           </button>
         </div>
+        <SearchBox contactId={activeContactId} />
         <div className="conversation-filters" role="group" aria-label="Filter conversations">
           {(["recent", "contact", "task"] as const).map((value) => (
             <button

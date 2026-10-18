@@ -88,12 +88,62 @@ async function mockWorkspace(page: Page) {
 test("root, mobile list return, and task information remain accessible", async ({ page }) => {
   await mockWorkspace(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
 
   await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();
   await expect(page.getByRole("main", { name: "No conversation selected" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "No conversation selected" })).toBeEmpty();
+  await expect(page.getByRole("heading", { name: "Conversations" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /dispatch desk/i })).toHaveCount(0);
+  expect(await page.locator(".workspace-shell").evaluate((shell) => {
+    const styles = getComputedStyle(shell);
+    return {
+      columns: styles.gridTemplateColumns.split(" ")[0],
+      list: styles.getPropertyValue("--list").trim(),
+      paper: styles.getPropertyValue("--paper").trim(),
+      thread: styles.getPropertyValue("--thread").trim(),
+      ink: styles.getPropertyValue("--ink").trim(),
+      muted: styles.getPropertyValue("--muted").trim(),
+      line: styles.getPropertyValue("--line").trim(),
+      green: styles.getPropertyValue("--green").trim(),
+      outgoing: styles.getPropertyValue("--outgoing").trim(),
+      incoming: styles.getPropertyValue("--incoming").trim(),
+      code: styles.getPropertyValue("--code").trim(),
+    };
+  })).toEqual({
+    columns: "280px",
+    list: "#2d2f30",
+    paper: "#202223",
+    thread: "#1b1d1e",
+    ink: "#f1f2f1",
+    muted: "#a0a4a4",
+    line: "#3e4142",
+    green: "#07c160",
+    outgoing: "#173d2d",
+    incoming: "#303334",
+    code: "#292b2c",
+  });
+  const title = page.getByRole("heading", { name: "Conversations" });
+  const search = page.getByRole("search");
+  const filters = page.getByRole("group", { name: "Filter conversations" });
+  const list = page.getByRole("navigation", { name: "Conversation list" });
+  await expect(title).toBeVisible();
+  expect(await title.evaluate((element, selectors) => {
+    const next = element.closest(".roster-heading")?.nextElementSibling;
+    return next?.matches(selectors.search)
+      && next.nextElementSibling?.matches(selectors.filters)
+      && next.nextElementSibling.nextElementSibling?.matches(selectors.list);
+  }, {
+    search: ".workspace-search",
+    filters: ".conversation-filters",
+    list: ".contact-roster",
+  })).toBe(true);
+
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.screenshot({ path: test.info().outputPath("task-1-root-1440x900.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("link", { name: /Feature/ }).click();
   await expect(page.getByRole("heading", { name: "Feature" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Conversation list" })).not.toBeVisible();
@@ -124,9 +174,30 @@ test("root, mobile list return, and task information remain accessible", async (
 
 test("private process details and contact settings remain available", async ({ page }) => {
   await mockWorkspace(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await page.getByRole("link", { name: /Ada/ }).click();
   await expect(page.getByRole("heading", { name: "Ada" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to conversations" })).toBeHidden();
+  const contactHeader = page.locator(".conversation-header");
+  await expect(contactHeader).toContainText("Private contact channel");
+  await expect(contactHeader).not.toContainText("Private assistant");
+  await expect(contactHeader.getByRole("link", { name: "Contact settings" })).toHaveCount(1);
+  await expect(page.locator(".message-list")).toHaveCSS("background-color", "rgb(27, 29, 30)");
+  await expect(page.locator(".message-user")).toHaveCSS("background-color", "rgb(23, 61, 45)");
+  await expect(page.locator(".message-assistant")).toHaveCSS("background-color", "rgb(48, 51, 52)");
+  await expect(page.locator(".process-details-card")).toHaveCSS("background-color", "rgb(41, 43, 44)");
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  await page.screenshot({ path: test.info().outputPath("task-1-contact-1440x900.png") });
+
+  await page.setViewportSize({ width: 650, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeVisible();
+  expect(await page.locator(".workspace-shell").evaluate((shell) =>
+    Number.parseFloat(getComputedStyle(shell).gridTemplateColumns))).toBe(220);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Conversation list" })).toBeHidden();
+  await expect(page.getByRole("link", { name: "Back to conversations" })).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   const processToggle = page.locator(".process-details-toggle");
   await processToggle.focus();

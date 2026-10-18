@@ -222,3 +222,33 @@ test("renders fetched process summaries and uses the same 我 avatar for outgoin
     globalThis.fetch = originalFetch;
   }
 });
+
+test("renders a compact private-channel contact header with one settings action", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a") {
+      return jsonResponse({ contact: contact("contact-a", "Contact A") });
+    }
+    if (url === "/api/contacts/contact-a/messages") return jsonResponse({ messages: [] });
+    if (url === "/api/contacts/contact-a/sessions?") return jsonResponse({ items: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, { contactId: "contact-a" }));
+    const heading = await screen.findByRole("heading", { name: "Contact A" });
+    const header = heading.closest(".conversation-header");
+    assert.ok(header);
+    assert.equal(header.querySelector("h1").textContent, "Contact A");
+    assert.ok(header.textContent.includes("Private contact channel"));
+    assert.ok(heading.compareDocumentPosition(header.querySelector(".conversation-subtitle")) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.equal(header.textContent.includes("Contact A description"), false);
+    assert.deepEqual(
+      [...header.querySelectorAll("a")].map((link) => link.textContent.trim()),
+      ["Contact settings"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

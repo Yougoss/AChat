@@ -227,9 +227,8 @@ function ContactChatSession({
       <section className="conversation-panel" aria-labelledby="conversation-title">
         <header className="conversation-header">
           <div>
-            <p className="eyebrow">Private contact channel</p>
             <h1 id="conversation-title">{visibleContact.name}</h1>
-            <p>{visibleContact.description || "No contact description provided."}</p>
+            <p className="conversation-subtitle">Private contact channel</p>
           </div>
           <Link className="button button-quiet" href={`/settings/contacts/${encodeURIComponent(visibleContact.id)}`}>
             Contact settings

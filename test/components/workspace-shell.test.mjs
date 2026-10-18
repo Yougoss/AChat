@@ -143,6 +143,53 @@ test("renders the root route with a blank main pane and no setup instructions", 
   });
 });
 
+test("orders the compact conversation heading, search, filters, and data-driven rows", async () => {
+  await withWorkspaceFetch(async () => {
+    render(provideRouter(React.createElement(WorkspaceShell)));
+    const heading = await screen.findByRole("heading", { name: "Conversations" });
+    const search = screen.getByRole("search");
+    const filters = screen.getByRole("group", { name: "Filter conversations" });
+    const list = screen.getByRole("navigation", { name: "Conversation list" });
+
+    assert.equal(heading.closest(".roster-heading").querySelector("button").getAttribute("aria-label"), "Add contact");
+    assert.ok(heading.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(search.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(filters.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.equal(screen.getByRole("link", { name: /Ada Lovelace/ }).textContent.includes("Latest private note"), true);
+    assert.equal(screen.getByRole("link", { name: /Orchid migration/ }).textContent.includes("Task group update"), true);
+    assert.equal(screen.queryByText("dispatch desk"), null);
+    assert.equal(screen.queryByText("Workspace", { selector: ".eyebrow" }), null);
+    assert.doesNotMatch(list.textContent, /2026-10-16|10:00|09:00/);
+  });
+});
+
+test("uses empty-preview copy and keeps long conversation names in the row", async () => {
+  const originalFetch = globalThis.fetch;
+  const longTitle = "An intentionally long persisted conversation name that must remain within its row";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "/api/conversations") return jsonResponse({
+      items: [{
+        ...items[0],
+        title: longTitle,
+        preview: "",
+      }],
+    });
+    if (url === "/api/models") return jsonResponse({ models: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    render(provideRouter(React.createElement(WorkspaceShell)));
+    const row = await screen.findByRole("link", { name: new RegExp(longTitle) });
+    assert.equal(row.querySelector(".contact-link-copy strong").textContent, longTitle);
+    assert.equal(row.querySelector(".contact-link-copy span").textContent, "No messages yet");
+    assert.equal(row.querySelector(".contact-avatar").textContent, items[0].avatarText);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("provides a return-to-list control when a conversation is active", async () => {
   await withWorkspaceFetch(async () => {
     render(provideRouter(React.createElement(
