@@ -213,11 +213,43 @@ test("renders fetched process summaries and uses the same 我 avatar for outgoin
     fireEvent.submit(screen.getByRole("button", { name: "Send message" }).closest("form"));
     await screen.findByText("Second exact reply");
 
-    const avatars = document.querySelectorAll(".message-user .message-avatar");
+    const avatars = document.querySelectorAll(".message-line-user .message-avatar");
     assert.deepEqual([...avatars].map((avatar) => avatar.textContent), ["我", "我"]);
     assert.equal(screen.getAllByRole("button", { name: /process details/i }).length, 2);
     assert.equal(screen.getByText("First exact reply").textContent, "First exact reply");
     assert.equal(screen.getByText("Second exact reply").textContent, "Second exact reply");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps a private assistant reply and its real sender name together in a left-side reply card", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "/api/contacts/contact-a") {
+      return jsonResponse({ contact: contact("contact-a", "Contact A") });
+    }
+    if (url === "/api/contacts/contact-a/messages") {
+      return jsonResponse({ messages: [{
+        id: "contact-reply",
+        role: "assistant",
+        content: "A reply without process details",
+        createdAt: "2026-10-16T10:00:00.000Z",
+      }] });
+    }
+    if (url === "/api/contacts/contact-a/sessions?") return jsonResponse({ items: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    render(React.createElement(ContactChat, { contactId: "contact-a" }));
+    const reply = await screen.findByText("A reply without process details");
+    const card = reply.closest(".message-assistant");
+    assert.ok(card);
+    assert.equal(card.querySelector(".message-role").textContent, "Contact A");
+    assert.ok(card.previousElementSibling.matches(".message-avatar"));
+    assert.equal(card.querySelector(".process-details-card"), null);
   } finally {
     globalThis.fetch = originalFetch;
   }

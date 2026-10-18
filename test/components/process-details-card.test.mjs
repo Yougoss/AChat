@@ -34,7 +34,6 @@ function card(props = {}) {
   return React.createElement(ProcessDetailsCard, {
     summary,
     detailUrl: "/api/process",
-    replyText: "Exact assistant response",
     ...props,
   });
 }
@@ -143,7 +142,7 @@ test("shows only the available usage fields when usage is partial", () => {
   assert.equal(screen.queryByText("Usage unavailable"), null);
 });
 
-test("keeps long tool output in a secondary disclosure and preserves the exact reply", async () => {
+test("keeps long tool output in a secondary disclosure without duplicating the reply", async () => {
   const longOutput = "safe output ".repeat(100);
   globalThis.fetch = async () => ({
     ok: true,
@@ -155,8 +154,8 @@ test("keeps long tool output in a secondary disclosure and preserves the exact r
   render(card());
   fireEvent.click(screen.getByRole("button", { name: /process details/i }));
 
-  assert.equal((await screen.findByText("Exact assistant response")).textContent, "Exact assistant response");
   const disclosure = await screen.findByText(/show full output/i);
+  assert.equal(document.querySelector(".process-reply"), null);
   assert.equal(disclosure.closest("details").open, false);
   assert.equal(disclosure.closest("details").querySelector("pre").textContent, longOutput);
 });

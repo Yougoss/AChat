@@ -30,10 +30,35 @@ test("shows contact and user avatars with the same 我 avatar for every outgoing
     senderLabels: { user: "You", assistant: "Ari" },
   }));
 
-  const outgoing = document.querySelectorAll(".message-user .message-avatar");
+  const outgoing = document.querySelectorAll(".message-line-user .message-avatar");
   assert.equal(outgoing.length, 2);
   assert.deepEqual([...outgoing].map((avatar) => avatar.textContent), ["我", "我"]);
   assert.equal(screen.getByLabelText("Ari avatar").textContent, "A");
+});
+
+test("places outgoing bubbles before the shared 我 avatar and keeps assistant reply content in one card", () => {
+  render(React.createElement(ConversationTimeline, {
+    messages: [
+      message("outgoing", "user", "2026-10-16T10:00:00.000Z", "Question"),
+      message("reply", "assistant", "2026-10-16T10:01:00.000Z", "Answer without a trace"),
+    ],
+    senderLabels: { user: "You", assistant: "Ari" },
+  }));
+
+  const outgoingLine = document.querySelector(".message-line-user");
+  const outgoingBubble = outgoingLine.querySelector(".message-user");
+  const outgoingAvatar = outgoingLine.querySelector(".message-avatar");
+  assert.ok(outgoingBubble);
+  assert.ok(outgoingAvatar);
+  assert.equal(outgoingBubble.contains(outgoingAvatar), false);
+  assert.ok(outgoingBubble.compareDocumentPosition(outgoingAvatar) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const reply = document.getElementById("message-reply");
+  assert.equal(reply.querySelector(".message-role").textContent, "Ari");
+  assert.equal(reply.querySelector(".message-content p").textContent, "Answer without a trace");
+  assert.equal(reply.querySelector(".process-details-card"), null);
+  assert.equal(reply.querySelector(".message-avatar"), null);
+  assert.ok(reply.previousElementSibling.matches(".message-avatar"));
 });
 
 test("adds a centered timestamp when the gap is exactly five minutes", () => {

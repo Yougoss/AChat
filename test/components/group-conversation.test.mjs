@@ -94,7 +94,7 @@ test("uses one outgoing avatar and timestamp separators at five minutes and date
   }));
 
   assert.deepEqual(
-    [...document.querySelectorAll(".message-user .message-avatar")].map((avatar) => avatar.textContent),
+    [...document.querySelectorAll(".message-line-user .message-avatar")].map((avatar) => avatar.textContent),
     ["我", "我"],
   );
   assert.ok(document.querySelector("details.task-information"));
@@ -114,6 +114,14 @@ test("shows one run process card on the final assistant reply and pairs its pers
   assert.match(lastAssistant.textContent, /@Builder → @Reviewer: Review the change for regressions\./);
   assert.equal(document.getElementById("message-handoff-1").textContent, "");
   assert.ok(lastAssistant.contains(document.getElementById("message-handoff-1")));
+  assert.ok(lastAssistant.previousElementSibling.matches(".message-avatar"));
+  const replyText = lastAssistant.querySelector(".message-content > p");
+  const handoffText = lastAssistant.querySelector(".message-handoff-context .process-handoff p");
+  const processSummary = lastAssistant.querySelector(".process-details-summary");
+  assert.ok(replyText.compareDocumentPosition(handoffText) & Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(
+    handoffText.compareDocumentPosition(processSummary) & Node.DOCUMENT_POSITION_FOLLOWING,
+  );
   assert.doesNotMatch(lastAssistant.textContent, /(?:src|test|docs)\/[\w./-]+/);
   assert.equal(
     screen.getAllByRole("button", { name: "Show process details" }).length,

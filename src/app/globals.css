@@ -2140,17 +2140,64 @@ textarea::placeholder {
 }
 
 .workspace-shell .message {
+  display: block;
   width: min(72%, 580px);
   border-color: transparent;
   border-radius: 3px 10px 10px;
   background: var(--incoming);
   padding: 9px 12px;
   font-size: 11px;
+  line-height: 1.65;
+}
+
+.workspace-shell .message-line {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.workspace-shell .message-line-assistant {
+  justify-content: flex-start;
+}
+
+.workspace-shell .message-line-user {
+  justify-content: flex-end;
+}
+
+.workspace-shell .timeline-separator {
+  align-self: center;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--muted) 17%, transparent);
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.workspace-shell .message-assistant {
+  width: min(92%, 760px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 4px 9px 9px 4px;
+  background: var(--paper);
+  padding: 0;
 }
 
 .workspace-shell .message-user {
   border-radius: 10px 3px 10px 10px;
   background: var(--outgoing);
+}
+
+.workspace-shell .message-content {
+  min-width: 0;
+}
+
+.workspace-shell .message-assistant .message-content {
+  padding: 10px 12px 9px;
+  line-height: 1.7;
 }
 
 .workspace-shell .message-avatar {
@@ -2165,12 +2212,19 @@ textarea::placeholder {
   font-size: 12px;
 }
 
-.workspace-shell .message-user .message-avatar {
+.workspace-shell .message-line-user .message-avatar {
   background: linear-gradient(145deg, #718d7d, #334c3e);
   color: #fff;
 }
 
+.workspace-shell .message-content > p {
+  margin: 3px 0 0;
+  line-height: 1.7;
+}
+
 .workspace-shell .message-role {
+  display: block;
+  margin-bottom: 3px;
   color: var(--muted);
   font-family: inherit;
   font-size: 9px;
@@ -2179,9 +2233,69 @@ textarea::placeholder {
   text-transform: none;
 }
 
+.workspace-shell .message-handoff .message-role {
+  color: var(--muted);
+}
+
+.workspace-shell .message-handoff-context {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+  border-left: 3px solid var(--green);
+  padding-left: 9px;
+}
+
+.workspace-shell .process-handoff {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
 .workspace-shell .process-details-card {
-  border-color: var(--line);
-  background: var(--code);
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.workspace-shell .process-details-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  padding: 7px 11px;
+}
+
+.workspace-shell .process-summary-copy,
+.workspace-shell .process-usage {
+  gap: 4px 8px;
+  font-size: 9px;
+}
+
+.workspace-shell .process-summary-copy strong {
+  font-size: 9px;
+}
+
+.workspace-shell .process-usage li {
+  font-size: 9px;
+}
+
+.workspace-shell .process-usage-unavailable {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.workspace-shell .process-details-toggle {
+  margin-left: auto;
+  color: var(--green);
+  font-size: 9px;
 }
 
 .workspace-shell .process-details-body,
@@ -2189,8 +2303,20 @@ textarea::placeholder {
   border-color: var(--line);
 }
 
+.workspace-shell .process-details-body {
+  padding: 9px 11px;
+}
+
+.workspace-shell .process-event-list {
+  gap: 6px;
+}
+
 .workspace-shell .process-event {
+  border-radius: 5px;
   background: var(--code);
+  padding: 7px 9px;
+  font-size: 9px;
+  line-height: 1.55;
 }
 
 .workspace-shell .message p {
@@ -2263,6 +2389,10 @@ textarea::placeholder {
     max-height: none;
     min-height: 0;
   }
+
+  .workspace-shell .message-assistant {
+    width: 97%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2300,7 +2430,11 @@ textarea::placeholder {
   }
 
   .workspace-shell .message {
-    width: min(92%, 580px);
+    width: min(72%, 580px);
+  }
+
+  .workspace-shell .message-assistant {
+    width: 97%;
   }
 
   .workspace-shell .message-composer {

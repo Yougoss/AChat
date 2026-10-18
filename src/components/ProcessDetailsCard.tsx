@@ -6,8 +6,6 @@ import type { ProcessDetails, ProcessEvent, ProcessSummary } from "../server/ser
 interface ProcessDetailsCardProps {
   summary: ProcessSummary;
   detailUrl: string;
-  replyText: string;
-  handoffs?: Array<{ id: string; content: string }>;
 }
 
 function errorMessage(value: unknown): string {
@@ -63,8 +61,6 @@ function ProcessEventRow({ event }: { event: ProcessEvent }) {
 export function ProcessDetailsCard({
   summary,
   detailUrl,
-  replyText,
-  handoffs = [],
 }: ProcessDetailsCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [details, setDetails] = useState<ProcessDetails | null>(null);
@@ -116,16 +112,6 @@ export function ProcessDetailsCard({
           <span>{summary.messageCount} {summary.messageCount === 1 ? "message" : "messages"}</span>
           {summary.models.length ? <span>{summary.models.join(", ")}</span> : null}
         </div>
-        {handoffs.length ? (
-          <div className="process-handoff-context" aria-label="Structured handoffs">
-            {handoffs.map((handoff) => (
-              <div className="process-handoff" key={handoff.id}>
-                <span className="fragment-anchor" id={`message-${handoff.id}`} aria-hidden="true" />
-                <p>{handoff.content}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
         {usageMetrics.length ? (
           <ul className="process-usage" aria-label="Usage">
             {usageMetrics.map(([label, value]) => (
@@ -145,7 +131,6 @@ export function ProcessDetailsCard({
       </div>
       {expanded ? (
         <div className="process-details-body" id={`process-details-${detailUrl}`}>
-          <p className="process-reply">{replyText}</p>
           {loading ? <p role="status">Loading process details…</p> : null}
           {error ? (
             <div role="alert" className="process-details-error">

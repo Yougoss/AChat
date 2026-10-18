@@ -89,37 +89,42 @@ export function ConversationTimeline({
                 {crossesDate ? formatDateTime(currentDate) : formatTime(currentDate)}
               </time>
             ) : null}
-            <article
-              className={`message message-${message.role}`}
-              id={`message-${message.id}`}
-              aria-label={`${senderLabel} message`}
-            >
-              <span className="message-avatar" aria-label={`${senderLabel} avatar`}>
-                {isUser ? "我" : avatarText(senderLabel)}
-              </span>
-              <div className="message-content">
-                <span className="message-role">{senderLabel}</span>
-                <p>{message.content}</p>
+            <div className={`message-line message-line-${isUser ? "user" : "assistant"}`}>
+              {!isUser ? (
+                <span className="message-avatar" aria-label={`${senderLabel} avatar`}>
+                  {avatarText(senderLabel)}
+                </span>
+              ) : null}
+              <article
+                className={`message message-${message.role}`}
+                id={`message-${message.id}`}
+                aria-label={`${senderLabel} message`}
+              >
+                <div className="message-content">
+                  <span className="message-role">{senderLabel}</span>
+                  <p>{message.content}</p>
+                  {!isUser && message.handoffs?.length ? (
+                    <div className="message-handoff-context" aria-label="Structured handoffs">
+                      {message.handoffs.map((handoff) => (
+                        <div className="process-handoff" key={handoff.id}>
+                          <span className="fragment-anchor" id={`message-${handoff.id}`} aria-hidden="true" />
+                          <p>{handoff.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 {!isUser && processSummary && processDetailsUrl ? (
                   <ProcessDetailsCard
                     summary={processSummary}
                     detailUrl={processDetailsUrl(processSummaryId)}
-                    replyText={message.content}
-                    handoffs={message.handoffs}
                   />
                 ) : null}
-                {!isUser && message.handoffs?.length && !(processSummary && processDetailsUrl) ? (
-                  <div className="message-handoff-context" aria-label="Structured handoffs">
-                    {message.handoffs.map((handoff) => (
-                      <div className="process-handoff" key={handoff.id}>
-                        <span className="fragment-anchor" id={`message-${handoff.id}`} aria-hidden="true" />
-                        <p>{handoff.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </article>
+              </article>
+              {isUser ? (
+                <span className="message-avatar" aria-label={`${senderLabel} avatar`}>我</span>
+              ) : null}
+            </div>
           </li>
         );
       })}
